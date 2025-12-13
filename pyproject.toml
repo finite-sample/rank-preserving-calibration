@@ -80,3 +80,17 @@ known-first-party = ["rank_preserving_calibration"]
 [tool.ruff.lint.per-file-ignores]
 "rank_preserving_calibration/metrics.py" = ["E702", "RUF034"]  # Allow compact coding style with semicolons in metrics
 
+[tool.deptry]
+# Exclude examples and virtual environment directories from dependency analysis
+exclude = ["examples", ".venv", "venv", "env", ".git", "docs", "_build", "dist", ".*\\.egg-info"]
+# Documentation dependencies are not imported in code but used for building docs
+ignore_notebooks = true
+# Known first-party modules that deptry might not recognize
+known_first_party = ["rank_preserving_calibration"]
+
+[tool.deptry.per_rule_ignores]
+# Documentation dependencies are not imported in code but used for building docs
+DEP002 = ["sphinx", "furo", "sphinx-autodoc-typehints", "sphinx-copybutton", "myst-parser", "nbsphinx"]
+# Test dependencies used in tests directory
+DEP004 = ["pytest", "hypothesis", "pytest-cov"]
+

@@ -3,15 +3,18 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-import os
 import sys
+import tomllib  # Python 3.11+
+from pathlib import Path
 
-sys.path.insert(0, os.path.abspath("../../"))
+# Add parent directory to path
+docs_dir = Path(__file__).parent
+project_root = docs_dir.parent.parent
+sys.path.insert(0, str(project_root))
 
 # Read metadata from pyproject.toml
-import tomllib  # Python 3.11+
-
-with open(os.path.abspath("../../pyproject.toml"), "rb") as f:
+pyproject_path = project_root / "pyproject.toml"
+with pyproject_path.open("rb") as f:
     pyproject_data = tomllib.load(f)
 
 # -- Project information -----------------------------------------------------

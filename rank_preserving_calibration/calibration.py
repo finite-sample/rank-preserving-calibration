@@ -23,7 +23,7 @@ from .nearly import (
 # ---------------------------------------------------------------------
 
 
-@dataclass
+@dataclass(slots=True)
 class CalibrationResult:
     """Result of rank-preserving calibration.
     Attributes
@@ -53,7 +53,7 @@ class CalibrationResult:
     final_change: float
 
 
-@dataclass
+@dataclass(slots=True)
 class ADMMResult:
     """Result from ADMM optimization.
     Attributes
@@ -94,8 +94,6 @@ class ADMMResult:
 
 class CalibrationError(Exception):
     """Raised when calibration fails due to invalid inputs or numerical issues."""
-
-    pass
 
 
 # ---------------------------------------------------------------------
