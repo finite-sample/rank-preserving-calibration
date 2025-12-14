@@ -36,6 +36,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.mathjax",
     "sphinx_copybutton",
+    "myst_nb",  # MyST-NB includes MyST-parser functionality
 ]
 
 templates_path = ["_templates"]
@@ -104,4 +105,26 @@ copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: 
 copybutton_prompt_is_regexp = True
 copybutton_remove_prompts = True
 
-# Additional configuration can be added here
+# MyST-NB configuration
+nb_execution_mode = "auto"  # Execute notebooks automatically when needed
+nb_execution_timeout = 300  # 5 minute timeout per cell
+nb_execution_allow_errors = False  # Fail build on notebook errors
+nb_execution_in_temp = False  # Execute in source directory
+
+# MyST parser configuration
+myst_enable_extensions = [
+    "colon_fence",
+    "deflist",
+    "dollarmath",
+    "fieldlist",
+    "html_admonition",
+    "html_image",
+    "replacements",
+    "smartquotes",
+    "strikethrough",
+    "substitution",
+    "tasklist",
+]
+
+# MyST-NB handles .ipynb files and MyST-parser handles .md files
+# No need to explicitly set source_suffix as extensions handle this

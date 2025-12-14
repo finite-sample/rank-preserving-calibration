@@ -1,14 +1,10 @@
 .DS_Store
 /rank_preserving_calibration.egg-info
-/examples/.ipynb_checkpoints
 /rank_preserving_calibration/__pycache__
 /.venv
 /dist
 /test_env
 /tests/__pycache__
-/examples/__pycache__
-/examples/lowrank_gls/.ipynb_checkpoints
-/examples/lowrank_gls/__pycache__
 
 # Documentation build artifacts
 docs/_build/

@@ -1,16 +1,14 @@
-Changelog
-=========
+# Changelog
 
-Version 0.6.0 (2024-10-XX)
----------------------------
+## Version 0.6.0 (2024-10-XX)
 
 **Breaking Changes:**
 * **Python 3.11+ Required**: Dropped support for Python 3.9 and 3.10
-* Modernized type annotations using built-in types (``tuple[]`` instead of ``Tuple[]``)
+* Modernized type annotations using built-in types (`tuple[]` instead of `Tuple[]`)
 
 **Modernization:**
-* Removed backward compatibility imports (``tomli``, ``importlib_metadata``)
-* Updated to use Python 3.11+ standard library features (``tomllib``, ``importlib.metadata``)
+* Removed backward compatibility imports (`tomli`, `importlib_metadata`)
+* Updated to use Python 3.11+ standard library features (`tomllib`, `importlib.metadata`)
 * Modernized CI/CD matrix: Python 3.11 on all platforms, 3.12/3.13 on Linux only
 * Updated Furo documentation theme (replacing sphinx_rtd_theme)
 
@@ -33,19 +31,17 @@ Version 0.6.0 (2024-10-XX)
 * Consistent code formatting across entire codebase
 * Removed unused imports and modernized import patterns
 
-Version 0.4.1 (2024-08-XX)
----------------------------
+## Version 0.4.1 (2024-08-XX)
 
 **Bug Fixes:**
 * Minor PyPI release improvements
 
-Version 0.4.0 (2024-08-XX)
----------------------------
+## Version 0.4.0 (2024-08-XX)
 
 **New Features:**
 * Added nearly isotonic calibration with epsilon-slack and lambda-penalty approaches
-* New functions: ``project_near_isotonic_euclidean``, ``prox_near_isotonic``, ``prox_near_isotonic_with_sum``
-* Enhanced API with ``nearly`` parameter for both Dykstra and ADMM methods
+* New functions: `project_near_isotonic_euclidean`, `prox_near_isotonic`, `prox_near_isotonic_with_sum`
+* Enhanced API with `nearly` parameter for both Dykstra and ADMM methods
 
 **API Changes:**
 * Improved result classes with better diagnostics
@@ -56,8 +52,7 @@ Version 0.4.0 (2024-08-XX)
 * Improved examples and tutorials
 * Added mathematical theory section
 
-Version 0.3.x and Earlier
---------------------------
+## Version 0.3.x and Earlier
 
 **Core Features:**
 * Implementation of Dykstra's alternating projections algorithm
@@ -65,4 +60,3 @@ Version 0.3.x and Earlier
 * Row-simplex and isotonic column constraints
 * Robust numerical implementation with PAV algorithm
 * Comprehensive test suite
-

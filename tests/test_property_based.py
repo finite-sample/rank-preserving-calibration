@@ -13,7 +13,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from examples.data_helpers import create_test_case
+from .data_helpers import create_test_case
 from rank_preserving_calibration import calibrate_admm, calibrate_dykstra
 
 

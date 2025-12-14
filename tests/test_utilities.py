@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from examples.data_helpers import (
+from .data_helpers import (
     analyze_calibration_result,
     create_realistic_classifier_case,
     create_survey_reweighting_case,

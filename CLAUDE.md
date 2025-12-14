@@ -82,12 +82,20 @@ python -m build
 
 ## Working with Examples
 
-The `examples/` directory contains:
-- `data_helpers.py`: Test case generators (`create_test_case`, `create_realistic_classifier_case`, etc.)
-- Jupyter notebooks demonstrating usage
-- Research analysis scripts (not part of main package)
+The package provides comprehensive documentation examples at `/docs/source/examples/`:
+- Medical diagnosis calibration using breast cancer dataset
+- Financial risk assessment with credit scoring
+- Text classification with sentiment analysis
+- Computer vision with handwritten digits
+- Survey research with demographic reweighting
 
-Example data helpers support different test scenarios:
+Testing utilities are located in `tests/data_helpers.py`:
+- `create_test_case()`: Generate synthetic test data for various scenarios
+- `create_realistic_classifier_case()`: Simulate miscalibrated classifiers  
+- `create_survey_reweighting_case()`: Generate survey bias scenarios
+- `analyze_calibration_result()`: Analyze calibration impact
+
+Test data scenarios support:
 - `"random"`: Dirichlet-generated probabilities
 - `"skewed"`: Biased class distributions  
 - `"linear"`: Linear trends for rank preservation testing

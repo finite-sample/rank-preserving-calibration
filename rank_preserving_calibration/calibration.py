@@ -18,6 +18,19 @@ from .nearly import (
     prox_near_isotonic,  # lambda-penalty (exact prox if provided version)
 )
 
+# Optional imports for performance
+try:
+    from tqdm.auto import tqdm
+    HAS_TQDM = True
+except ImportError:
+    HAS_TQDM = False
+    tqdm = None
+
+# Import JIT-compiled functions if available
+from ._numba_utils import get_jit_functions
+
+_jit_funcs = get_jit_functions()
+
 # ---------------------------------------------------------------------
 # Data containers
 # ---------------------------------------------------------------------
@@ -159,8 +172,13 @@ def _validate_inputs(
 # ---------------------------------------------------------------------
 
 
-def _project_row_simplex(rows: np.ndarray, eps: float = 1e-15) -> np.ndarray:
+def _project_row_simplex(rows: np.ndarray, eps: float = 1e-15, use_jit: bool = True) -> np.ndarray:
     """Project rows onto the probability simplex with numerical stability."""
+    # Use JIT version if available and requested
+    if use_jit and _jit_funcs['available'] and _jit_funcs['project_row_simplex'] is not None:
+        return _jit_funcs['project_row_simplex'](rows, eps)
+
+    # Fallback to pure Python implementation
     N, J = rows.shape
     projected = np.empty_like(rows, dtype=np.float64)
 
@@ -439,6 +457,8 @@ def calibrate_dykstra(
     cycle_window: int = 10,
     nearly: dict | None = None,
     ties: str = "stable",
+    progress_bar: bool = False,
+    use_jit: bool = True,
 ) -> CalibrationResult:
     """Calibrate using Dykstra's alternating projections.
 
@@ -474,12 +494,17 @@ def calibrate_dykstra(
     converged = False
     final_change = float("inf")
 
+    # Initialize progress bar if requested and available
+    pbar = None
+    if progress_bar and HAS_TQDM:
+        pbar = tqdm(total=max_iters, desc="Dykstra calibration", unit="iter")
+
     for iteration in range(1, max_iters + 1):
         np.copyto(Q_prev, Q)
 
         # Project onto row simplex
         Y = Q + U
-        Q = _project_row_simplex(Y)
+        Q = _project_row_simplex(Y, use_jit=use_jit)
         U = Y - Q
 
         # Project onto column constraints
@@ -506,10 +531,21 @@ def calibrate_dykstra(
         row_ok = np.allclose(Q.sum(axis=1), 1.0, atol=1e-12)
         col_ok = np.allclose(Q.sum(axis=0), M, atol=1e-10)
 
+        # Update progress bar if active
+        if pbar is not None:
+            pbar.update(1)
+            pbar.set_postfix({
+                "change": f"{final_change:.2e}",
+                "row_err": f"{np.max(np.abs(Q.sum(axis=1) - 1.0)):.2e}",
+                "col_err": f"{np.max(np.abs(Q.sum(axis=0) - M)):.2e}"
+            })
+
         if final_change < tol and row_ok and col_ok:
             converged = True
             if verbose:
                 print(f"Dykstra converged at iteration {iteration}")
+            if pbar is not None:
+                pbar.close()
             break
 
         # Cycle detection (optional)
@@ -552,6 +588,10 @@ def calibrate_dykstra(
         ):
             converged = True
 
+    # Clean up progress bar if it wasn't closed earlier
+    if pbar is not None and not converged:
+        pbar.close()
+
     # Diagnostics
     row_sums = Q.sum(axis=1)
     col_sums = Q.sum(axis=0)
@@ -586,6 +626,8 @@ def calibrate_admm(
     verbose: bool = False,
     nearly: dict | None = None,
     ties: str = "stable",
+    progress_bar: bool = False,
+    use_jit: bool = True,
 ) -> ADMMResult:
     """Calibrate using ADMM-style optimization.
 

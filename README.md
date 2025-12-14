@@ -29,9 +29,15 @@ An **ADMM optimization** implementation is also provided as an alternative solve
 
 ```bash
 pip install rank-preserving-calibration
+
+# For performance optimizations (2-10x speedup on large matrices)
+pip install rank-preserving-calibration[performance]
 ```
 
-The only runtime dependency is `numpy`. Optional dependencies include `scipy` (for enhanced test case generation) and `matplotlib` (for examples).
+The only runtime dependency is `numpy`. Optional extras:
+- `[performance]`: Adds `numba` (JIT compilation) and `tqdm` (progress bars)
+- `[docs]`: Documentation building dependencies
+- Examples require `scipy` and `matplotlib`
 
 ## Usage
 
@@ -74,6 +80,29 @@ result = calibrate_admm(P, M, nearly=nearly_params)
 ```
 
 The returned `CalibrationResult` contains the calibrated matrix `Q` with the same shape as `P`. Each row of `Q` sums to one, the column sums match `M`, and within each column the entries are sorted in non-decreasing order according to the order implied by the original `P`.
+
+### Performance Features
+
+```python
+# Enable progress bar for long-running calibrations
+result = calibrate_dykstra(P, M, progress_bar=True)  # Shows iteration progress
+
+# Disable JIT compilation if needed (enabled by default when numba installed)
+result = calibrate_dykstra(P, M, use_jit=False)
+
+# Both features work together
+result = calibrate_dykstra(
+    P, M,
+    max_iters=5000,
+    progress_bar=True,  # Visual feedback
+    use_jit=True,       # 2-10x speedup
+)
+```
+
+With the `[performance]` extras installed:
+- **JIT Compilation**: Automatically accelerates hot loops using Numba
+- **Progress Bars**: Shows calibration progress with iteration count, convergence metrics, and ETA
+- Typical speedup: 2-3x for moderate problems (N=500, J=10), up to 10x for larger problems
 
 ## Evaluation and Metrics
 
@@ -168,9 +197,9 @@ Calibrate using Dykstra's alternating projections (recommended). Supports both s
 
 Calibrate using ADMM optimization with penalty parameter `rho`. Supports lambda-penalty nearly isotonic constraints.
 
-### `create_test_case(case_type, N, J, **kwargs)` (in `examples.data_helpers`)
+### `create_test_case(case_type, N, J, **kwargs)` (in `tests.data_helpers`)
 
-Generate synthetic test data for various scenarios used in examples and tests.
+Generate synthetic test data for various scenarios used in testing.
 
 ## Arguments
 
@@ -219,12 +248,15 @@ The ADMM function returns an `ADMMResult` object with additional convergence his
 
 ## Examples
 
-See `examples/` directory for comprehensive examples including:
-- `example.ipynb`: Basic usage and visualization
-- `focused_nearly_isotonic_example.py`: When to use nearly isotonic calibration
-- Real-world classifier calibration scenarios  
-- Survey reweighting applications
-- Algorithm comparison and performance analysis
+See our comprehensive documentation examples at [https://finite-sample.github.io/rank_preserving_calibration/examples.html](https://finite-sample.github.io/rank_preserving_calibration/examples.html):
+
+- **Medical Diagnosis**: Breast cancer risk calibration across populations
+- **Financial Risk**: Credit scoring with regulatory compliance
+- **Text Classification**: Sentiment analysis with domain adaptation
+- **Computer Vision**: OCR deployment across applications
+- **Survey Research**: Demographic reweighting for representative samples
+
+Each example uses real datasets and provides complete analysis workflows with business context and performance evaluation.
 
 ### When to Use Nearly Isotonic Calibration
 

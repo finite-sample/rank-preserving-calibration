@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "rank_preserving_calibration"
-version = "0.6.0"
+version = "0.7.0"
 description = "Rank-preserving calibration of multiclass probabilities via Dykstra's projections and ADMM."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,6 +34,16 @@ docs = [
     "sphinx-copybutton>=0.5",
     "myst-parser>=2.0",
     "nbsphinx>=0.9",
+    "jupyter",
+    "ipykernel>=6.0",
+    "scikit-learn>=1.0",
+    "matplotlib>=3.0",
+    "seaborn>=0.11",
+    "plotly>=5.0",
+]
+performance = [
+    "numba>=0.56",
+    "tqdm>=4.65",
 ]
 
 [project.urls]
@@ -47,9 +57,9 @@ module-name = "rank_preserving_calibration"
 module-root = ""
 
 [dependency-groups]
-dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff>=0.7.0", "mypy>=1.0", "pre-commit>=3.0"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff>=0.7.0", "mypy>=1.0", "pre-commit>=3.0", "numba>=0.56", "tqdm>=4.65"]
 test = ["pytest>=7.0", "pytest-cov>=4.0", "hypothesis>=6.0"]
-examples = ["scipy>=1.0", "matplotlib>=3.0", "jupyter", "seaborn"]
+examples = ["scipy>=1.0", "matplotlib>=3.0", "jupyter", "seaborn>=0.11", "scikit-learn>=1.0", "plotly>=5.0", "pandas>=1.5"]
 
 [tool.ruff]
 target-version = "py311"
@@ -90,7 +100,7 @@ known_first_party = ["rank_preserving_calibration"]
 
 [tool.deptry.per_rule_ignores]
 # Documentation dependencies are not imported in code but used for building docs
-DEP002 = ["sphinx", "furo", "sphinx-autodoc-typehints", "sphinx-copybutton", "myst-parser", "nbsphinx"]
+DEP002 = ["sphinx", "furo", "sphinx-autodoc-typehints", "sphinx-copybutton", "myst-parser", "nbsphinx", "jupyter", "ipykernel", "scikit-learn", "matplotlib", "seaborn", "plotly", "pandas"]
 # Test dependencies used in tests directory
 DEP004 = ["pytest", "hypothesis", "pytest-cov"]
 
