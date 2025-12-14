@@ -11,7 +11,6 @@ Run with: python -m pytest tests/test_nearly_isotonic_consolidated.py
 import numpy as np
 import pytest
 
-from .data_helpers import create_test_case
 from rank_preserving_calibration import (
     calibrate_admm,
     calibrate_dykstra,
@@ -19,6 +18,8 @@ from rank_preserving_calibration import (
     prox_near_isotonic,
     prox_near_isotonic_with_sum,
 )
+
+from .data_helpers import create_test_case
 
 
 class TestEpsilonSlackIntegration:

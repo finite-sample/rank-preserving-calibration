@@ -11,7 +11,6 @@ Run with: python -m pytest tests/test_core_algorithms.py
 import numpy as np
 import pytest
 
-from .data_helpers import create_test_case
 from rank_preserving_calibration import (
     ADMMResult,
     CalibrationError,
@@ -19,6 +18,8 @@ from rank_preserving_calibration import (
     calibrate_admm,
     calibrate_dykstra,
 )
+
+from .data_helpers import create_test_case
 
 
 class TestDykstraCore:

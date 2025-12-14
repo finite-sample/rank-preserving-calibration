@@ -63,6 +63,7 @@ examples = ["scipy>=1.0", "matplotlib>=3.0", "jupyter", "seaborn>=0.11", "scikit
 [tool.ruff]
 target-version = "py311"
 line-length = 88
+exclude = ["**/.*", "build/", "dist/", "venv/", ".venv/"]
 
 [tool.ruff.lint]
 extend-select = [
@@ -88,6 +89,7 @@ known-first-party = ["rank_preserving_calibration"]
 
 [tool.ruff.lint.per-file-ignores]
 "rank_preserving_calibration/metrics.py" = ["E702", "RUF034"]  # Allow compact coding style with semicolons in metrics
+"docs/source/examples/*.ipynb" = ["E402", "B007", "F821"]  # Allow notebook-style imports and unused loop vars
 
 [tool.deptry]
 # Exclude examples and virtual environment directories from dependency analysis

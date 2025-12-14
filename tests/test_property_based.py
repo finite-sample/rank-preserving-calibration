@@ -13,8 +13,9 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from .data_helpers import create_test_case
 from rank_preserving_calibration import calibrate_admm, calibrate_dykstra
+
+from .data_helpers import create_test_case
 
 
 # Hypothesis strategies for generating test data
