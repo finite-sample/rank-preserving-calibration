@@ -7,6 +7,7 @@ calibration algorithms including Dykstra's alternating projections and ADMM.
 
 from __future__ import annotations
 
+import logging
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -31,6 +32,28 @@ except ImportError:
 from ._numba_utils import get_jit_functions
 
 _jit_funcs = get_jit_functions()
+
+# Set up logging
+logger = logging.getLogger(__name__)
+
+
+def _configure_logging(verbose: bool) -> None:
+    """Configure logging level based on verbosity setting."""
+    if verbose:
+        logger.setLevel(logging.DEBUG)
+        # Ensure handler exists and is configured
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+            logger.propagate = False
+    else:
+        logger.setLevel(logging.WARNING)
+        # Remove any existing handlers when verbose=False to prevent leakage
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+        logger.propagate = True  # Let parent loggers handle output
 
 # ---------------------------------------------------------------------
 # Data containers
@@ -476,6 +499,7 @@ def calibrate_dykstra(
     Column projection is the exact Euclidean projection: **PAV then uniform shift**.
     If `ties=="group"`, equal-score items are pooled before PAV and expanded after the shift.
     """
+    _configure_logging(verbose)
     _, J = _validate_inputs(P, M, max_iters, tol, feasibility_tol)
     if ties not in ("stable", "group"):
         raise ValueError(f"ties must be 'stable' or 'group', got '{ties}'")
@@ -551,8 +575,7 @@ def calibrate_dykstra(
 
         if final_change < tol and row_ok and col_ok:
             converged = True
-            if verbose:
-                print(f"Dykstra converged at iteration {iteration}")
+            logger.info(f"Dykstra converged at iteration {iteration}")
             if pbar is not None:
                 pbar.close()
             break
@@ -570,8 +593,8 @@ def calibrate_dykstra(
             if len(Q_history) > cycle_window:
                 Q_history.pop(0)
 
-        if verbose and (iteration % 100 == 0 or iteration <= 10):
-            print(f"Dykstra iteration {iteration}: change = {final_change:.2e}")
+        if iteration % 100 == 0 or iteration <= 10:
+            logger.debug(f"Dykstra iteration {iteration}: change = {final_change:.2e}")
 
         if callback is not None and not callback(iteration, final_change, Q):
             break
@@ -645,9 +668,10 @@ def calibrate_admm(
       • strict isotonic regression (nearly is None), or
       • an exact λ-penalty nearly-isotonic prox (nearly={"mode":"lambda","lam":...}).
 
-    For the “distance optimality” test, we **snap** the final iterate to the
+    For the "distance optimality" test, we **snap** the final iterate to the
     exact Euclidean projection using a short Dykstra run.
     """
+    _configure_logging(verbose)
     N, J = _validate_inputs(P, M, max_iters, tol, feasibility_tol)
     if ties not in ("stable", "group"):
         raise ValueError(f"ties must be 'stable' or 'group', got '{ties}'")
@@ -754,8 +778,8 @@ def calibrate_admm(
         primal_residuals.append(float(primal_res))
         dual_residuals.append(float(dual_res))
 
-        if verbose and iteration % 100 == 0:
-            print(
+        if iteration % 100 == 0:
+            logger.debug(
                 f"ADMM iter {iteration}: obj={obj_val:.3e}, primal={primal_res:.3e}, dual={dual_res:.3e}"
             )
 
