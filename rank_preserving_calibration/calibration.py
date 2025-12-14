@@ -21,6 +21,7 @@ from .nearly import (
 # Optional imports for performance
 try:
     from tqdm.auto import tqdm
+
     HAS_TQDM = True
 except ImportError:
     HAS_TQDM = False
@@ -172,11 +173,17 @@ def _validate_inputs(
 # ---------------------------------------------------------------------
 
 
-def _project_row_simplex(rows: np.ndarray, eps: float = 1e-15, use_jit: bool = True) -> np.ndarray:
+def _project_row_simplex(
+    rows: np.ndarray, eps: float = 1e-15, use_jit: bool = True
+) -> np.ndarray:
     """Project rows onto the probability simplex with numerical stability."""
     # Use JIT version if available and requested
-    if use_jit and _jit_funcs['available'] and _jit_funcs['project_row_simplex'] is not None:
-        return _jit_funcs['project_row_simplex'](rows, eps)
+    if (
+        use_jit
+        and _jit_funcs["available"]
+        and _jit_funcs["project_row_simplex"] is not None
+    ):
+        return _jit_funcs["project_row_simplex"](rows, eps)
 
     # Fallback to pure Python implementation
     N, J = rows.shape
@@ -534,11 +541,13 @@ def calibrate_dykstra(
         # Update progress bar if active
         if pbar is not None:
             pbar.update(1)
-            pbar.set_postfix({
-                "change": f"{final_change:.2e}",
-                "row_err": f"{np.max(np.abs(Q.sum(axis=1) - 1.0)):.2e}",
-                "col_err": f"{np.max(np.abs(Q.sum(axis=0) - M)):.2e}"
-            })
+            pbar.set_postfix(
+                {
+                    "change": f"{final_change:.2e}",
+                    "row_err": f"{np.max(np.abs(Q.sum(axis=1) - 1.0)):.2e}",
+                    "col_err": f"{np.max(np.abs(Q.sum(axis=0) - M)):.2e}",
+                }
+            )
 
         if final_change < tol and row_ok and col_ok:
             converged = True

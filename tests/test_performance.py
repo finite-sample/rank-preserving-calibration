@@ -50,12 +50,16 @@ class TestPerformanceOptimizations:
 
         # Time without JIT
         start = time.perf_counter()
-        result_pure = calibrate_dykstra(P, M, max_iters=50, use_jit=False, verbose=False)
+        result_pure = calibrate_dykstra(
+            P, M, max_iters=50, use_jit=False, verbose=False
+        )
         time_pure = time.perf_counter() - start
 
         # JIT should be faster (at least 20% improvement expected)
         speedup = time_pure / time_jit
-        print(f"JIT speedup: {speedup:.2f}x (JIT: {time_jit:.3f}s, Pure: {time_pure:.3f}s)")
+        print(
+            f"JIT speedup: {speedup:.2f}x (JIT: {time_jit:.3f}s, Pure: {time_pure:.3f}s)"
+        )
 
         # Results should still be very close
         np.testing.assert_allclose(result_jit.Q, result_pure.Q, rtol=1e-7, atol=1e-15)

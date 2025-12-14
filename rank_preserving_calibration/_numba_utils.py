@@ -11,20 +11,31 @@ import numpy as np
 # Try to import numba, set flag for availability
 try:
     from numba import njit
+
     HAS_NUMBA = True
 except ImportError:
     HAS_NUMBA = False
+
     # Define identity decorator for graceful fallback
     def njit(*args, **kwargs):
         """Identity decorator when numba is not available."""
+
         def decorator(func):
             return func
-        return decorator if not args else decorator(args[0]) if callable(args[0]) else decorator
+
+        return (
+            decorator
+            if not args
+            else decorator(args[0])
+            if callable(args[0])
+            else decorator
+        )
 
 
 # ---------------------------------------------------------------------
 # JIT-compiled simplex projection
 # ---------------------------------------------------------------------
+
 
 @njit(cache=True, fastmath=True)
 def project_row_simplex_jit(rows: np.ndarray, eps: float = 1e-15) -> np.ndarray:
@@ -81,11 +92,10 @@ def project_row_simplex_jit(rows: np.ndarray, eps: float = 1e-15) -> np.ndarray:
 # JIT-compiled isotonic regression (PAV algorithm)
 # ---------------------------------------------------------------------
 
+
 @njit(cache=True, fastmath=True)
 def isotonic_regression_jit(
-    y: np.ndarray,
-    weights: np.ndarray | None = None,
-    rtol: float = 0.0
+    y: np.ndarray, weights: np.ndarray | None = None, rtol: float = 0.0
 ) -> np.ndarray:
     """JIT-compiled isotonic regression via Pool Adjacent Violators.
 
@@ -133,25 +143,27 @@ def isotonic_regression_jit(
         # Pool adjacent violators
         while n_blocks > 1:
             # Check if we should merge with previous block
-            tol = rtol * (abs(block_vals[n_blocks-2]) + abs(block_vals[n_blocks-1]) + 1.0)
-            if block_vals[n_blocks-2] <= block_vals[n_blocks-1] + tol:
+            tol = rtol * (
+                abs(block_vals[n_blocks - 2]) + abs(block_vals[n_blocks - 1]) + 1.0
+            )
+            if block_vals[n_blocks - 2] <= block_vals[n_blocks - 1] + tol:
                 break
 
             # Merge blocks: weighted average
-            w1 = block_weights[n_blocks-2]
-            w2 = block_weights[n_blocks-1]
-            v1 = block_vals[n_blocks-2]
-            v2 = block_vals[n_blocks-1]
+            w1 = block_weights[n_blocks - 2]
+            w2 = block_weights[n_blocks - 1]
+            v1 = block_vals[n_blocks - 2]
+            v2 = block_vals[n_blocks - 1]
 
-            block_vals[n_blocks-2] = (w1 * v1 + w2 * v2) / (w1 + w2)
-            block_weights[n_blocks-2] = w1 + w2
+            block_vals[n_blocks - 2] = (w1 * v1 + w2 * v2) / (w1 + w2)
+            block_weights[n_blocks - 2] = w1 + w2
             n_blocks -= 1
 
     # Expand blocks to output
     result = np.empty_like(y)
     for i in range(n_blocks):
         start = block_starts[i]
-        end = block_starts[i+1] if i < n_blocks-1 else n
+        end = block_starts[i + 1] if i < n_blocks - 1 else n
         for j in range(start, end):
             result[j] = block_vals[i]
 
@@ -161,6 +173,7 @@ def isotonic_regression_jit(
 # ---------------------------------------------------------------------
 # JIT-compiled helper for run-length encoding
 # ---------------------------------------------------------------------
+
 
 @njit(cache=True, fastmath=True)
 def run_lengths_jit(x_sorted: np.ndarray) -> np.ndarray:
@@ -185,7 +198,7 @@ def run_lengths_jit(x_sorted: np.ndarray) -> np.ndarray:
     # Count number of runs first
     n_runs = 1
     for i in range(1, n):
-        if x_sorted[i] != x_sorted[i-1]:
+        if x_sorted[i] != x_sorted[i - 1]:
             n_runs += 1
 
     # Allocate output
@@ -195,7 +208,7 @@ def run_lengths_jit(x_sorted: np.ndarray) -> np.ndarray:
     run_idx = 0
     cnt = 1
     for i in range(1, n):
-        if x_sorted[i] == x_sorted[i-1]:
+        if x_sorted[i] == x_sorted[i - 1]:
             cnt += 1
         else:
             lengths[run_idx] = cnt
@@ -210,6 +223,7 @@ def run_lengths_jit(x_sorted: np.ndarray) -> np.ndarray:
 # Export appropriate functions based on Numba availability
 # ---------------------------------------------------------------------
 
+
 def get_jit_functions():
     """Get JIT-compiled functions if available, otherwise None.
 
@@ -221,15 +235,15 @@ def get_jit_functions():
     """
     if HAS_NUMBA:
         return {
-            'project_row_simplex': project_row_simplex_jit,
-            'isotonic_regression': isotonic_regression_jit,
-            'run_lengths': run_lengths_jit,
-            'available': True
+            "project_row_simplex": project_row_simplex_jit,
+            "isotonic_regression": isotonic_regression_jit,
+            "run_lengths": run_lengths_jit,
+            "available": True,
         }
     else:
         return {
-            'project_row_simplex': None,
-            'isotonic_regression': None,
-            'run_lengths': None,
-            'available': False
+            "project_row_simplex": None,
+            "isotonic_regression": None,
+            "run_lengths": None,
+            "available": False,
         }
