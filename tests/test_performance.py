@@ -67,23 +67,6 @@ class TestPerformanceOptimizations:
         # Note: We don't assert on speedup as it varies by machine
         # but typically expect 1.5-3x speedup on moderate size problems
 
-    def test_progress_bar_does_not_affect_results(self):
-        """Test that progress bar doesn't change numerical results."""
-        np.random.seed(42)
-        N, J = 50, 3
-        P = np.random.dirichlet(np.ones(J), size=N)
-        M = np.full(J, N / J)
-
-        # Run without progress bar
-        result_no_bar = calibrate_dykstra(P, M, max_iters=100, progress_bar=False)
-
-        # Run with progress bar (even if tqdm not installed, should work)
-        result_with_bar = calibrate_dykstra(P, M, max_iters=100, progress_bar=True)
-
-        # Results should be identical
-        np.testing.assert_allclose(result_no_bar.Q, result_with_bar.Q, rtol=1e-10)
-        assert result_no_bar.converged == result_with_bar.converged
-        assert result_no_bar.iterations == result_with_bar.iterations
 
     def test_graceful_fallback_without_numba(self):
         """Test that code works even without Numba installed."""

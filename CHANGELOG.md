@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2024-12-21
+
+### Changed
+- **Removed tqdm dependency** 
+  - Eliminated optional import patterns for cleaner dependency management
+  - Removed `progress_bar` parameter from `calibrate_dykstra` and `calibrate_admm` functions
+  - Updated examples and documentation to remove progress bar references
+
+- **Enhanced docstrings**
+  - Converted all docstrings to Google style format for consistency
+  - Added comprehensive examples, args, and returns documentation
+  - Improved API documentation across all public functions
+
+- **Python modernization**
+  - Refactored input validation to use Python 3.11+ match statements
+  - Updated validation patterns for better readability and maintainability
+
+### Removed
+- **Breaking Change**: `progress_bar` parameter no longer supported
+- Removed tqdm from both performance and dev dependency groups
+
 ## [0.7.0] - 2024-12-13
 
 ### Added

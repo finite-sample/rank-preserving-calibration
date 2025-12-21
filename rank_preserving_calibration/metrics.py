@@ -14,6 +14,31 @@ def _safe_log(x: np.ndarray, eps: float = 1e-15) -> np.ndarray:
 
 
 def feasibility_metrics(Q: np.ndarray, M: np.ndarray | None = None) -> dict[str, Any]:
+    """Compute feasibility metrics for calibrated probability matrix.
+
+    Analyzes how well the probability matrix Q satisfies the row and column
+    sum constraints required by rank-preserving calibration.
+
+    Args:
+        Q: Calibrated probability matrix of shape (N, J). Should have rows summing
+            to 1 and non-negative entries.
+        M: Target column sums of shape (J,). If provided, analyzes column sum
+            constraint satisfaction.
+
+    Returns:
+        Dictionary containing feasibility metrics:
+            - "row": Row constraint metrics including max/mean absolute errors and min value
+            - "col": Column constraint metrics (if M provided) including various error norms
+
+    Examples:
+        >>> import numpy as np
+        >>> from rank_preserving_calibration import feasibility_metrics
+        >>> Q = np.array([[0.6, 0.3, 0.1], [0.4, 0.4, 0.2]])
+        >>> M = np.array([1.0, 0.7, 0.3])
+        >>> metrics = feasibility_metrics(Q, M)
+        >>> print(f"Max row error: {metrics['row']['max_abs_error']:.6f}")
+        >>> print(f"Max col error: {metrics['col']['max_abs_error']:.6f}")
+    """
     Q = np.asarray(Q, dtype=np.float64)
     _N, _J = Q.shape
     row_sums = Q.sum(axis=1)
@@ -38,7 +63,31 @@ def feasibility_metrics(Q: np.ndarray, M: np.ndarray | None = None) -> dict[str,
 
 
 def isotonic_metrics(Q: np.ndarray, P: np.ndarray) -> dict[str, Any]:
-    """Check nondecreasing in score order for each column; compute violation stats and flatness."""
+    """Analyze isotonic (rank-preserving) properties of calibrated probabilities.
+
+    Verifies that calibrated probabilities are nondecreasing when ordered by original
+    model scores within each class. Computes violation statistics and flatness measures.
+
+    Args:
+        Q: Calibrated probability matrix of shape (N, J).
+        P: Original probability matrix of shape (N, J) used for score ordering.
+
+    Returns:
+        Dictionary containing isotonic metrics:
+            - "max_rank_violation": Maximum rank-order violation across all columns
+            - "mass_weighted_violation": Sum of violation magnitudes weighted by mass
+            - "flat_fraction": Fraction of adjacent pairs that are equal (flatness)
+            - "per_class_max_violation": List of max violations per class
+            - "per_class_mass_violation": List of mass-weighted violations per class
+
+    Examples:
+        >>> import numpy as np
+        >>> from rank_preserving_calibration import isotonic_metrics
+        >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
+        >>> Q = np.array([[0.65, 0.25, 0.1], [0.35, 0.45, 0.2]])
+        >>> metrics = isotonic_metrics(Q, P)
+        >>> print(f"Max violation: {metrics['max_rank_violation']:.6f}")
+    """
     Q = np.asarray(Q, dtype=np.float64)
     P = np.asarray(P, dtype=np.float64)
     _N, J = Q.shape
@@ -107,6 +156,29 @@ def tie_group_variance(Q: np.ndarray, P: np.ndarray) -> dict[str, Any]:
 
 
 def distance_metrics(Q: np.ndarray, P: np.ndarray) -> dict[str, float]:
+    """Compute distance metrics between original and calibrated probabilities.
+
+    Measures how much the calibration procedure has changed the probability estimates
+    using various matrix norms and distance measures.
+
+    Args:
+        Q: Calibrated probability matrix of shape (N, J).
+        P: Original probability matrix of shape (N, J).
+
+    Returns:
+        Dictionary containing distance metrics:
+            - "frobenius": Frobenius norm ||Q - P||_F
+            - "frobenius_sq": Squared Frobenius norm ||Q - P||²_F
+            - "mean_abs": Mean absolute difference
+            - "max_abs": Maximum absolute difference
+
+    Examples:
+        >>> import numpy as np
+        >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
+        >>> Q = np.array([[0.65, 0.25, 0.1], [0.35, 0.45, 0.2]])
+        >>> distances = distance_metrics(Q, P)
+        >>> print(f"Frobenius distance: {distances['frobenius']:.4f}")
+    """
     Q = np.asarray(Q, dtype=np.float64)
     P = np.asarray(P, dtype=np.float64)
     D = Q - P
@@ -122,6 +194,22 @@ def distance_metrics(Q: np.ndarray, P: np.ndarray) -> dict[str, float]:
 
 
 def nll(y: np.ndarray, probs: np.ndarray) -> float:
+    """Compute negative log-likelihood (cross-entropy loss).
+
+    Args:
+        y: True class labels as integers of shape (N,).
+        probs: Probability matrix of shape (N, J).
+
+    Returns:
+        Average negative log-likelihood across all instances.
+
+    Examples:
+        >>> import numpy as np
+        >>> y = np.array([0, 1, 2])
+        >>> probs = np.array([[0.8, 0.1, 0.1], [0.2, 0.7, 0.1], [0.1, 0.2, 0.7]])
+        >>> loss = nll(y, probs)
+        >>> print(f"NLL: {loss:.4f}")
+    """
     y = np.asarray(y, dtype=np.int64)
     probs = np.asarray(probs, dtype=np.float64)
     return float(-np.mean(_safe_log(probs[np.arange(len(y)), y])))

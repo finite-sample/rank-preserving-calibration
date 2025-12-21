@@ -35,7 +35,7 @@ pip install rank-preserving-calibration[performance]
 ```
 
 The only runtime dependency is `numpy`. Optional extras:
-- `[performance]`: Adds `numba` (JIT compilation) and `tqdm` (progress bars)
+- `[performance]`: Adds `numba` (JIT compilation)
 - `[docs]`: Documentation building dependencies
 - Examples require `scipy` and `matplotlib`
 
@@ -84,9 +84,6 @@ The returned `CalibrationResult` contains the calibrated matrix `Q` with the sam
 ### Performance Features
 
 ```python
-# Enable progress bar for long-running calibrations
-result = calibrate_dykstra(P, M, progress_bar=True)  # Shows iteration progress
-
 # Disable JIT compilation if needed (enabled by default when numba installed)
 result = calibrate_dykstra(P, M, use_jit=False)
 
@@ -94,7 +91,6 @@ result = calibrate_dykstra(P, M, use_jit=False)
 result = calibrate_dykstra(
     P, M,
     max_iters=5000,
-    progress_bar=True,  # Visual feedback
     use_jit=True,       # 2-10x speedup
 )
 ```

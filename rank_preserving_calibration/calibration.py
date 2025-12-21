@@ -14,22 +14,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
+# Import JIT-compiled functions if available
+from ._numba_utils import get_jit_functions
 from .nearly import (
     project_near_isotonic_euclidean,  # epsilon-slack, with exact sum shift
     prox_near_isotonic,  # lambda-penalty (exact prox if provided version)
 )
-
-# Optional imports for performance
-try:
-    from tqdm.auto import tqdm
-
-    HAS_TQDM = True
-except ImportError:
-    HAS_TQDM = False
-    tqdm = None
-
-# Import JIT-compiled functions if available
-from ._numba_utils import get_jit_functions
 
 _jit_funcs = get_jit_functions()
 
@@ -63,23 +53,26 @@ def _configure_logging(verbose: bool) -> None:
 
 @dataclass(slots=True)
 class CalibrationResult:
-    """Result of rank-preserving calibration.
-    Attributes
-    ----------
-    Q : np.ndarray
-        Calibrated probability matrix of shape (N, J).
-    converged : bool
-        Whether the algorithm converged within tolerance.
-    iterations : int
-        Number of iterations performed.
-    max_row_error : float
-        Maximum absolute deviation of row sums from 1.0.
-    max_col_error : float
-        Maximum absolute deviation of column sums from target.
-    max_rank_violation : float
-        Maximum rank violation across all columns.
-    final_change : float
-        Final relative change between iterations.
+    """Result container for rank-preserving calibration algorithms.
+
+    Returned by calibrate_dykstra() containing the calibrated probability matrix
+    and diagnostic information about convergence and constraint satisfaction.
+
+    Attributes:
+        Q: Calibrated probability matrix of shape (N, J) where rows sum to 1
+            and columns preserve rank ordering from original scores.
+        converged: True if algorithm converged within specified tolerance.
+        iterations: Number of iterations performed before termination.
+        max_row_error: Maximum absolute error in row sum constraint (should be ≈0).
+        max_col_error: Maximum absolute error in column sum constraint.
+        max_rank_violation: Maximum rank-order violation across all columns.
+        final_change: Final relative change in solution between iterations.
+
+    Examples:
+        >>> result = calibrate_dykstra(P, M)
+        >>> if result.converged:
+        ...     print(f"Calibration successful in {result.iterations} iterations")
+        >>> print(f"Max rank violation: {result.max_rank_violation:.6f}")
     """
 
     Q: np.ndarray
@@ -142,52 +135,75 @@ class CalibrationError(Exception):
 def _validate_inputs(
     P: np.ndarray, M: np.ndarray, max_iters: int, tol: float, feasibility_tol: float
 ) -> tuple[int, int]:
-    """Validate all inputs to calibration functions."""
-    # Validate P
-    if not isinstance(P, np.ndarray):
-        raise CalibrationError("P must be a numpy array")
-    if P.ndim != 2:
-        raise CalibrationError("P must be a 2D array of shape (N, J)")
-    if P.size == 0:
-        raise CalibrationError("P cannot be empty")
-    if not np.isfinite(P).all():
-        raise CalibrationError("P must not contain NaN or infinite values")
-    if np.any(P < 0):
-        raise CalibrationError("P must contain non-negative values")
+    """Validate all inputs to calibration functions.
+
+    Args:
+        P: Input probability matrix to validate.
+        M: Target column sums to validate.
+        max_iters: Maximum iterations parameter to validate.
+        tol: Tolerance parameter to validate.
+        feasibility_tol: Feasibility tolerance to validate.
+
+    Returns:
+        Tuple of (N, J) where N is number of instances and J is number of classes.
+
+    Raises:
+        CalibrationError: If any input validation fails.
+    """
+    # Validate P using match statements
+    match P:
+        case x if not isinstance(x, np.ndarray):
+            raise CalibrationError("P must be a numpy array")
+        case x if x.ndim != 2:
+            raise CalibrationError("P must be a 2D array of shape (N, J)")
+        case x if x.size == 0:
+            raise CalibrationError("P cannot be empty")
+        case x if not np.isfinite(x).all():
+            raise CalibrationError("P must not contain NaN or infinite values")
+        case x if np.any(x < 0):
+            raise CalibrationError("P must contain non-negative values")
 
     N, J = P.shape
-    if J < 2:
-        raise CalibrationError("P must have at least 2 columns (classes)")
+    match J:
+        case j if j < 2:
+            raise CalibrationError("P must have at least 2 columns (classes)")
 
-    # Validate M
-    if not isinstance(M, np.ndarray):
-        raise CalibrationError("M must be a numpy array")
-    if M.ndim != 1:
-        raise CalibrationError("M must be a 1D array")
-    if M.size != J:
-        raise CalibrationError(f"M must have length {J} to match P.shape[1]")
-    if not np.isfinite(M).all():
-        raise CalibrationError("M must not contain NaN or infinite values")
-    if np.any(M < 0):
-        raise CalibrationError("M must contain non-negative values")
+    # Validate M using match statements
+    match M:
+        case x if not isinstance(x, np.ndarray):
+            raise CalibrationError("M must be a numpy array")
+        case x if x.ndim != 1:
+            raise CalibrationError("M must be a 1D array")
+        case x if x.size != J:
+            raise CalibrationError(f"M must have length {J} to match P.shape[1]")
+        case x if not np.isfinite(x).all():
+            raise CalibrationError("M must not contain NaN or infinite values")
+        case x if np.any(x < 0):
+            raise CalibrationError("M must contain non-negative values")
 
     # Check basic feasibility (soft warning)
     M_sum = float(M.sum())
-    if abs(M_sum - N) > feasibility_tol * N:
-        warnings.warn(
-            f"Sum of M ({M_sum:.3f}) differs from N ({N}) by "
-            f"{abs(M_sum - N):.3f}. Problem may be infeasible.",
-            UserWarning,
-            stacklevel=2,
-        )
+    match abs(M_sum - N):
+        case diff if diff > feasibility_tol * N:
+            warnings.warn(
+                f"Sum of M ({M_sum:.3f}) differs from N ({N}) by "
+                f"{diff:.3f}. Problem may be infeasible.",
+                UserWarning,
+                stacklevel=2,
+            )
 
-    # Validate other parameters
-    if not isinstance(max_iters, int) or max_iters <= 0:
-        raise CalibrationError("max_iters must be a positive integer")
-    if not isinstance(tol, (int, float)) or tol <= 0:
-        raise CalibrationError("tol must be a positive number")
-    if not isinstance(feasibility_tol, (int, float)) or feasibility_tol < 0:
-        raise CalibrationError("feasibility_tol must be non-negative")
+    # Validate other parameters using match statements
+    match max_iters:
+        case x if not isinstance(x, int) or x <= 0:
+            raise CalibrationError("max_iters must be a positive integer")
+
+    match tol:
+        case x if not isinstance(x, (int, float)) or x <= 0:
+            raise CalibrationError("tol must be a positive number")
+
+    match feasibility_tol:
+        case x if not isinstance(x, (int, float)) or x < 0:
+            raise CalibrationError("feasibility_tol must be non-negative")
 
     return N, J
 
@@ -200,7 +216,20 @@ def _validate_inputs(
 def _project_row_simplex(
     rows: np.ndarray, eps: float = 1e-15, use_jit: bool = True
 ) -> np.ndarray:
-    """Project rows onto the probability simplex with numerical stability."""
+    """Project rows onto the probability simplex with numerical stability.
+
+    Projects each row of the matrix onto the probability simplex, ensuring
+    non-negative entries that sum to 1. Uses Euclidean projection algorithm
+    with numerical stability improvements.
+
+    Args:
+        rows: Matrix of shape (N, J) where each row will be projected.
+        eps: Small tolerance for numerical stability in computations.
+        use_jit: Whether to use JIT-compiled version if available.
+
+    Returns:
+        Projected matrix with same shape, where each row sums to 1 and is non-negative.
+    """
     # Use JIT version if available and requested
     if (
         use_jit
@@ -371,32 +400,32 @@ def _project_column_isotonic_sum(
 
     y = column[column_order]
 
-    # Nearly-isotonic (epsilon slack)
-    if nearly is not None and nearly.get("mode") == "epsilon":
-        eps = float(nearly.get("eps", 1e-3))
-        iso_shifted = project_near_isotonic_euclidean(y, eps, sum_target=target_sum)
-
-    else:
-        if ties == "group" and score_sorted is not None:
-            lens = _run_lengths_of_equals(score_sorted)
-            k = lens.size
-            y_group = np.empty(k, dtype=np.float64)
-            pos = 0
-            for g in range(k):
-                L = int(lens[g])
-                y_group[g] = float(np.mean(y[pos : pos + L]))
-                pos += L
-            z_group = _isotonic_regression(
-                y_group, rtol=rtol, ties="stable", weights=lens.astype(np.float64)
-            )
-            total_n = int(lens.sum())
-            c = (float(target_sum) - float(np.dot(z_group, lens))) / float(total_n)
-            z_group_shift = z_group + c
-            iso_shifted = np.repeat(z_group_shift, lens)
-        else:
-            iso = _isotonic_regression(y, rtol=rtol, ties=ties)
-            c = (float(target_sum) - float(iso.sum())) / float(iso.size)
-            iso_shifted = iso + c
+    # Nearly-isotonic mode selection using match
+    match nearly:
+        case {"mode": "epsilon", **rest}:
+            eps = float(rest.get("eps", 1e-3))
+            iso_shifted = project_near_isotonic_euclidean(y, eps, sum_target=target_sum)
+        case None | _:
+            if ties == "group" and score_sorted is not None:
+                lens = _run_lengths_of_equals(score_sorted)
+                k = lens.size
+                y_group = np.empty(k, dtype=np.float64)
+                pos = 0
+                for g in range(k):
+                    L = int(lens[g])
+                    y_group[g] = float(np.mean(y[pos : pos + L]))
+                    pos += L
+                z_group = _isotonic_regression(
+                    y_group, rtol=rtol, ties="stable", weights=lens.astype(np.float64)
+                )
+                total_n = int(lens.sum())
+                c = (float(target_sum) - float(np.dot(z_group, lens))) / float(total_n)
+                z_group_shift = z_group + c
+                iso_shifted = np.repeat(z_group_shift, lens)
+            else:
+                iso = _isotonic_regression(y, rtol=rtol, ties=ties)
+                c = (float(target_sum) - float(iso.sum())) / float(iso.size)
+                iso_shifted = iso + c
 
     projected = np.empty_like(column, dtype=np.float64)
     projected[column_order] = iso_shifted
@@ -488,17 +517,73 @@ def calibrate_dykstra(
     cycle_window: int = 10,
     nearly: dict | None = None,
     ties: str = "stable",
-    progress_bar: bool = False,
     use_jit: bool = True,
 ) -> CalibrationResult:
     """Calibrate using Dykstra's alternating projections.
 
-    Projects onto the intersection of:
-      (A) row simplex  { rows ≥ 0, rows sum to 1 }  and
-      (B) column-wise isotone-by-score + fixed column sums { nondecreasing in score order; column sum = M_j }.
+    Projects multiclass probabilities onto the intersection of:
+      (A) row simplex: {rows ≥ 0, rows sum to 1} and
+      (B) column-wise isotone-by-score + fixed column sums: {nondecreasing in score order; column sum = M_j}.
 
-    Column projection is the exact Euclidean projection: **PAV then uniform shift**.
-    If `ties=="group"`, equal-score items are pooled before PAV and expanded after the shift.
+    This is the recommended default method for rank-preserving calibration. The algorithm
+    uses exact Euclidean projections via Pool Adjacent Violators (PAV) followed by uniform
+    shifts to satisfy sum constraints.
+
+    Args:
+        P: Input probability matrix of shape (N, J). Each row represents predicted class
+            probabilities for one instance. Rows need not sum to 1 initially.
+        M: Target column sums of shape (J,). Should sum to approximately N for feasibility.
+        max_iters: Maximum number of iterations. Default 3000 is usually sufficient.
+        tol: Convergence tolerance for relative change in solution. Default 1e-7.
+        rtol: Relative tolerance for isotonic violations in PAV. Default 0.0 (strict).
+        feasibility_tol: Tolerance for feasibility warnings when sum(M) differs from N.
+        verbose: If True, enables debug logging.
+        callback: Optional function called each iteration as callback(iter, change, Q).
+            Should return False to terminate early.
+        detect_cycles: If True, detects and breaks cycles in the solution sequence.
+        cycle_window: Number of iterations to look back for cycle detection.
+        nearly: Optional dict for nearly-isotonic constraints. Use {"mode": "epsilon", "eps": 0.01}
+            to allow small isotonicity violations.
+        ties: How to handle tied scores. "stable" preserves input order, "group" pools
+            equal-score instances.
+        use_jit: If True and numba is available, uses JIT-compiled functions for speed.
+
+    Returns:
+        CalibrationResult object containing:
+            - Q: Calibrated probability matrix of shape (N, J)
+            - converged: True if algorithm converged within tolerance
+            - iterations: Number of iterations performed
+            - max_row_error: Maximum absolute row sum error
+            - max_col_error: Maximum absolute column sum error
+            - max_rank_violation: Maximum rank order violation
+            - final_change: Final relative change in solution
+
+    Raises:
+        CalibrationError: If inputs are invalid (wrong shapes, negative values, etc.)
+        ValueError: If ties parameter is not "stable" or "group"
+
+    Examples:
+        Basic calibration:
+
+        >>> import numpy as np
+        >>> from rank_preserving_calibration import calibrate_dykstra
+        >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
+        >>> M = np.array([1.0, 0.7, 0.3])  # Target column sums
+        >>> result = calibrate_dykstra(P, M)
+        >>> print(f"Converged: {result.converged}")
+        >>> print(f"Row sums: {result.Q.sum(axis=1)}")
+        >>> print(f"Column sums: {result.Q.sum(axis=0)}")
+
+        With nearly-isotonic constraints:
+
+        >>> result = calibrate_dykstra(P, M, nearly={"mode": "epsilon", "eps": 0.05})
+
+    Notes:
+        - Converges to the exact intersection of the constraint sets
+        - Preserves ranking within each class (column) by original model scores
+        - Memory complexity is O(N*J) for the probability matrices
+        - Time complexity per iteration is O(N*J*log(N)) due to sorting
+        - For best performance, ensure sum(M) ≈ N and use numba if available
     """
     _configure_logging(verbose)
     _, J = _validate_inputs(P, M, max_iters, tol, feasibility_tol)
@@ -525,11 +610,6 @@ def calibrate_dykstra(
     Q_history: list[np.ndarray] | None = [] if detect_cycles else None
     converged = False
     final_change = float("inf")
-
-    # Initialize progress bar if requested and available
-    pbar = None
-    if progress_bar and HAS_TQDM:
-        pbar = tqdm(total=max_iters, desc="Dykstra calibration", unit="iter")
 
     for iteration in range(1, max_iters + 1):
         np.copyto(Q_prev, Q)
@@ -563,22 +643,9 @@ def calibrate_dykstra(
         row_ok = np.allclose(Q.sum(axis=1), 1.0, atol=1e-12)
         col_ok = np.allclose(Q.sum(axis=0), M, atol=1e-10)
 
-        # Update progress bar if active
-        if pbar is not None:
-            pbar.update(1)
-            pbar.set_postfix(
-                {
-                    "change": f"{final_change:.2e}",
-                    "row_err": f"{np.max(np.abs(Q.sum(axis=1) - 1.0)):.2e}",
-                    "col_err": f"{np.max(np.abs(Q.sum(axis=0) - M)):.2e}",
-                }
-            )
-
         if final_change < tol and row_ok and col_ok:
             converged = True
             logger.info(f"Dykstra converged at iteration {iteration}")
-            if pbar is not None:
-                pbar.close()
             break
 
         # Cycle detection (optional)
@@ -621,10 +688,6 @@ def calibrate_dykstra(
         ):
             converged = True
 
-    # Clean up progress bar if it wasn't closed earlier
-    if pbar is not None and not converged:
-        pbar.close()
-
     # Diagnostics
     row_sums = Q.sum(axis=1)
     col_sums = Q.sum(axis=0)
@@ -659,18 +722,77 @@ def calibrate_admm(
     verbose: bool = False,
     nearly: dict | None = None,
     ties: str = "stable",
-    progress_bar: bool = False,
     use_jit: bool = True,
 ) -> ADMMResult:
-    """Calibrate using ADMM-style optimization.
+    """Calibrate using ADMM-style optimization with penalty methods.
 
-    This solver treats the row/column sums via multipliers and enforces
-    rank-preservation per column by either:
-      • strict isotonic regression (nearly is None), or
-      • an exact λ-penalty nearly-isotonic prox (nearly={"mode":"lambda","lam":...}).
+    An alternative to Dykstra's projections that handles row/column sum constraints via
+    Lagrange multipliers and rank-preservation through either strict isotonic regression
+    or lambda-penalty nearly-isotonic proximal operators.
 
-    For the "distance optimality" test, we **snap** the final iterate to the
-    exact Euclidean projection using a short Dykstra run.
+    The algorithm minimizes ||Q - P||² subject to constraint sets using an augmented
+    Lagrangian approach. For final optimality verification, the solution is snapped
+    to the exact intersection using a short Dykstra polish.
+
+    Args:
+        P: Input probability matrix of shape (N, J). Each row represents predicted class
+            probabilities for one instance. Rows need not sum to 1 initially.
+        M: Target column sums of shape (J,). Should sum to approximately N for feasibility.
+        rho: ADMM penalty parameter. Larger values enforce constraints more aggressively.
+            Default 1.0 works well for most problems.
+        max_iters: Maximum number of iterations. Default 1000 is usually sufficient.
+        tol: Convergence tolerance for primal/dual residuals. Default 1e-6.
+        rtol: Relative tolerance for isotonic violations in PAV. Default 0.0 (strict).
+        feasibility_tol: Tolerance for feasibility warnings when sum(M) differs from N.
+        verbose: If True, enables debug logging.
+        nearly: Optional dict for nearly-isotonic constraints. Use {"mode": "lambda", "lam": 1.0}
+            for lambda-penalty approach allowing soft isotonicity violations.
+        ties: How to handle tied scores. "stable" preserves input order, "group" pools
+            equal-score instances.
+        use_jit: If True and numba is available, uses JIT-compiled functions for speed.
+
+    Returns:
+        ADMMResult object containing:
+            - Q: Calibrated probability matrix of shape (N, J)
+            - converged: True if algorithm converged within tolerance
+            - iterations: Number of iterations performed
+            - max_row_error: Maximum absolute row sum error
+            - max_col_error: Maximum absolute column sum error
+            - max_rank_violation: Maximum rank order violation
+            - final_change: Final relative change in solution
+            - objective_values: List of objective function values per iteration
+            - primal_residuals: List of primal residual norms per iteration
+            - dual_residuals: List of dual residual norms per iteration
+
+    Raises:
+        CalibrationError: If inputs are invalid (wrong shapes, negative values, etc.)
+        ValueError: If ties parameter is not "stable" or "group"
+
+    Examples:
+        Basic ADMM calibration:
+
+        >>> import numpy as np
+        >>> from rank_preserving_calibration import calibrate_admm
+        >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
+        >>> M = np.array([1.0, 0.7, 0.3])
+        >>> result = calibrate_admm(P, M)
+        >>> print(f"Converged: {result.converged}")
+        >>> print(f"Objective values: {result.objective_values[-5:]}")
+
+        With lambda-penalty for soft isotonicity:
+
+        >>> result = calibrate_admm(P, M, nearly={"mode": "lambda", "lam": 2.0})
+
+        Adjusting penalty parameter:
+
+        >>> result = calibrate_admm(P, M, rho=5.0)  # Stronger constraint enforcement
+
+    Notes:
+        - Often converges faster than Dykstra for well-conditioned problems
+        - Provides convergence diagnostics via objective and residual histories
+        - Lambda-penalty mode allows trading off isotonicity for fit quality
+        - Final solution is snapped to exact feasible set for optimality
+        - Experimental: may need parameter tuning for difficult problems
     """
     _configure_logging(verbose)
     N, J = _validate_inputs(P, M, max_iters, tol, feasibility_tol)
@@ -699,9 +821,12 @@ def calibrate_admm(
     primal_residuals: list[float] = []
     dual_residuals: list[float] = []
 
-    lam_pen = None
-    if nearly is not None and nearly.get("mode") == "lambda":
-        lam_pen = float(nearly.get("lam", 1.0))
+    # Initialize lambda penalty using match
+    match nearly:
+        case {"mode": "lambda", **rest}:
+            lam_pen = float(rest.get("lam", 1.0))
+        case _:
+            lam_pen = None
 
     converged = False
     for iteration in range(max_iters):

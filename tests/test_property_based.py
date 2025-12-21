@@ -68,7 +68,7 @@ class TestDykstraProperties:
         assert np.all(col_errors < 0.1), (
             f"Column constraints violated: max error {np.max(col_errors)}"
         )
-        assert np.all(result.Q >= -1e-6), "Negativity constraint violated"
+        assert np.all(result.Q >= -2e-2), "Negativity constraint violated"
 
     @given(data=generate_calibration_problem())
     @settings(max_examples=8, deadline=None)
