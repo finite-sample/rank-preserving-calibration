@@ -322,7 +322,7 @@ class TestAnalysisUtilities:
         analysis_conv = analyze_calibration_result(P, result_converged, M)
         analysis_not_conv = analyze_calibration_result(P, result_not_converged, M)
 
-        # Both should produce valid analyses
+        # Both should produce valid analyzes
         assert analysis_conv["convergence"]["converged"]
         assert not analysis_not_conv["convergence"]["converged"]
 

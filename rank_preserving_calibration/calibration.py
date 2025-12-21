@@ -44,7 +44,7 @@ def _configure_logging(verbose: bool) -> None:
         # Ensure handler exists and is configured
         if not logger.handlers:
             handler = logging.StreamHandler()
-            formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+            formatter = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
             handler.setFormatter(formatter)
             logger.addHandler(handler)
             logger.propagate = False
@@ -54,6 +54,7 @@ def _configure_logging(verbose: bool) -> None:
         for handler in logger.handlers[:]:
             logger.removeHandler(handler)
         logger.propagate = True  # Let parent loggers handle output
+
 
 # ---------------------------------------------------------------------
 # Data containers
