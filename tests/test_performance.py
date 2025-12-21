@@ -67,7 +67,6 @@ class TestPerformanceOptimizations:
         # Note: We don't assert on speedup as it varies by machine
         # but typically expect 1.5-3x speedup on moderate size problems
 
-
     def test_graceful_fallback_without_numba(self):
         """Test that code works even without Numba installed."""
         # This test always runs regardless of Numba availability
