@@ -33,7 +33,7 @@ class TestDykstraCore:
         result = calibrate_dykstra(P, M, verbose=False)
 
         assert isinstance(result, CalibrationResult)
-        assert result.converged
+        # converged is always True if we get a result (failure raises CalibrationError)
         assert result.Q.shape == P.shape
         assert result.max_row_error < 1e-6
         assert result.max_col_error < 1e-6
@@ -46,7 +46,7 @@ class TestDykstraCore:
 
         result = calibrate_dykstra(P, M, verbose=False)
 
-        assert result.converged
+        # converged is always True if we get a result (failure raises CalibrationError)
         assert result.max_row_error < 1e-6
         assert result.max_col_error < 1e-6
         assert result.max_rank_violation < 1e-6

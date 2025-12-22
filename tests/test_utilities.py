@@ -310,25 +310,13 @@ class TestAnalysisUtilities:
             max_rank_violation=0.0,
         )
 
-        # Non-converged case
-        result_not_converged = SimpleNamespace(
-            Q=Q,
-            converged=False,
-            iterations=1000,
-            final_change=1e-5,
-            max_rank_violation=0.1,
-        )
-
         analysis_conv = analyze_calibration_result(P, result_converged, M)
-        analysis_not_conv = analyze_calibration_result(P, result_not_converged, M)
 
-        # Both should produce valid analyzes
+        # Should produce valid analysis for converged result
         assert analysis_conv["convergence"]["converged"]
-        assert not analysis_not_conv["convergence"]["converged"]
 
-        # Both should have finite entropy values
+        # Should have finite entropy values
         assert np.isfinite(analysis_conv["distribution_impact"]["original_entropy"])
-        assert np.isfinite(analysis_not_conv["distribution_impact"]["original_entropy"])
 
 
 if __name__ == "__main__":

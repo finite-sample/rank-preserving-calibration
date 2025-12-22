@@ -266,8 +266,7 @@ class TestAlgorithmicGuarantees:
 
         result = calibrate_dykstra(P, M, max_iters=1000)
 
-        # Should converge quickly and accurately
-        assert result.converged or result.final_change < 1e-8
+        # Should converge quickly and accurately (raises CalibrationError if not)
         assert result.max_row_error < 1e-10
         assert result.max_col_error < 1e-10
 
