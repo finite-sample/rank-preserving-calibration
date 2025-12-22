@@ -61,7 +61,7 @@ class TestDykstraProperties:
 
         try:
             result = calibrate_dykstra(P, M, max_iters=2000, tol=1e-6, verbose=False)
-            
+
             # Relaxed constraint checking - handle cases where algorithm may not fully converge
             row_errors = np.abs(result.Q.sum(axis=1) - 1.0)
             col_errors = np.abs(result.Q.sum(axis=0) - M)
@@ -115,7 +115,7 @@ class TestDykstraProperties:
         for P, M in test_cases:
             results = []
             converged_runs = 0
-            
+
             for _ in range(3):
                 try:
                     result = calibrate_dykstra(P, M, max_iters=500, verbose=False)
