@@ -48,9 +48,9 @@ class TestEpsilonSlackIntegration:
         distance_nearly = np.linalg.norm(result_nearly.Q - P, "fro")
 
         # Nearly isotonic should achieve equal or better fit
-        assert (
-            distance_nearly <= distance_strict + 1e-6
-        ), f"Nearly isotonic worse fit: {distance_nearly} > {distance_strict}"
+        assert distance_nearly <= distance_strict + 1e-6, (
+            f"Nearly isotonic worse fit: {distance_nearly} > {distance_strict}"
+        )
 
     def test_epsilon_convergence_improvement(self):
         """Test that epsilon slack can improve convergence."""
@@ -73,9 +73,9 @@ class TestEpsilonSlackIntegration:
             iterations.append(result.iterations)
 
         # Generally expect fewer iterations with epsilon slack (though not guaranteed)
-        assert all(
-            it < 1000 for it in iterations
-        ), "Should converge within iteration limit"
+        assert all(it < 1000 for it in iterations), (
+            "Should converge within iteration limit"
+        )
 
     def test_large_epsilon_flexibility(self):
         """Test that large epsilon provides more flexibility."""
@@ -96,9 +96,9 @@ class TestEpsilonSlackIntegration:
         dist_small = np.linalg.norm(z_small - v)
         dist_large = np.linalg.norm(z_large - v)
 
-        assert (
-            dist_large <= dist_small + 1e-10
-        ), f"Large epsilon not more flexible: {dist_large} > {dist_small}"
+        assert dist_large <= dist_small + 1e-10, (
+            f"Large epsilon not more flexible: {dist_large} > {dist_small}"
+        )
 
 
 class TestLambdaPenaltyIntegration:
@@ -179,9 +179,9 @@ class TestLambdaPenaltyIntegration:
             if len(valid_violations) >= 2:
                 # Generally expect trade-off: larger lambda -> smaller violations
                 # (though exact monotonicity not guaranteed due to optimization)
-                assert (
-                    valid_violations[-1] <= valid_violations[0] + 1e-6
-                ), "Large lambda should reduce violations"
+                assert valid_violations[-1] <= valid_violations[0] + 1e-6, (
+                    "Large lambda should reduce violations"
+                )
         # If fewer than 2 converge, the test passes (acceptable given limited iterations)
 
 
@@ -202,9 +202,9 @@ class TestNearlyIsotonicUtilities:
         viol_original = isotonic_violation(v)
         viol_prox = isotonic_violation(z_large_lambda)
 
-        assert (
-            viol_prox <= viol_original * 0.1
-        ), "Large lambda prox should be much more isotonic"
+        assert viol_prox <= viol_original * 0.1, (
+            "Large lambda prox should be much more isotonic"
+        )
 
     def test_prox_with_sum_properties(self):
         """Test prox operator with sum constraint maintains properties."""
@@ -247,9 +247,9 @@ class TestNearlyIsotonicEdgeCases:
         dist_tiny = np.linalg.norm(z_tiny - z_isotonic)
         dist_moderate = np.linalg.norm(z_moderate - z_isotonic)
 
-        assert (
-            dist_tiny <= dist_moderate + 1e-10
-        ), "Tiny epsilon should be closer to isotonic"
+        assert dist_tiny <= dist_moderate + 1e-10, (
+            "Tiny epsilon should be closer to isotonic"
+        )
 
     def test_extreme_lambda_values(self):
         """Test lambda values at extremes."""
@@ -338,9 +338,9 @@ class TestNearlyIsotonicConsistency:
             P, "fro"
         )  # Use input scale as reference
 
-        assert (
-            distance_between < max_reasonable_distance
-        ), f"Epsilon and lambda results too different: {distance_between}"
+        assert distance_between < max_reasonable_distance, (
+            f"Epsilon and lambda results too different: {distance_between}"
+        )
 
     def test_convergence_to_strict_limits(self):
         """Test that parameters converge to strict isotonic in limits."""
@@ -358,9 +358,9 @@ class TestNearlyIsotonicConsistency:
         dist_01_to_001 = np.linalg.norm(eps_results[0] - eps_results[2])
         dist_001_to_0001 = np.linalg.norm(eps_results[1] - eps_results[2])
 
-        assert (
-            dist_001_to_0001 <= dist_01_to_001 + 1e-10
-        ), "Not converging as epsilon decreases"
+        assert dist_001_to_0001 <= dist_01_to_001 + 1e-10, (
+            "Not converging as epsilon decreases"
+        )
 
 
 if __name__ == "__main__":

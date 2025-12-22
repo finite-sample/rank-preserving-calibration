@@ -67,12 +67,12 @@ class TestDykstraProperties:
             col_errors = np.abs(result.Q.sum(axis=0) - M)
 
             # More relaxed tolerances for property-based testing
-            assert np.all(
-                row_errors < 0.1
-            ), f"Row constraints violated: max error {np.max(row_errors)}"
-            assert np.all(
-                col_errors < 0.1
-            ), f"Column constraints violated: max error {np.max(col_errors)}"
+            assert np.all(row_errors < 0.1), (
+                f"Row constraints violated: max error {np.max(row_errors)}"
+            )
+            assert np.all(col_errors < 0.1), (
+                f"Column constraints violated: max error {np.max(col_errors)}"
+            )
             assert np.all(result.Q >= -2e-2), "Negativity constraint violated"
         except CalibrationError:
             # With challenging cases and strict tolerance, convergence failure is acceptable
@@ -97,9 +97,9 @@ class TestDykstraProperties:
                 calibrated_sorted = result.Q[order, j]
                 # Allow small number of minor violations
                 severe_violations = np.diff(calibrated_sorted) < -1e-6
-                assert (
-                    np.sum(severe_violations) == 0
-                ), f"Severe rank violations in column {j}: {np.sum(severe_violations)}"
+                assert np.sum(severe_violations) == 0, (
+                    f"Severe rank violations in column {j}: {np.sum(severe_violations)}"
+                )
         except CalibrationError:
             # With challenging cases, convergence failure is acceptable
             pass
@@ -129,9 +129,9 @@ class TestDykstraProperties:
             if converged_runs >= 2:
                 for i in range(1, len(results)):
                     distance = np.linalg.norm(results[0] - results[i], "fro")
-                    assert (
-                        distance < 1e-10
-                    ), f"Non-deterministic behavior: distance = {distance}"
+                    assert distance < 1e-10, (
+                        f"Non-deterministic behavior: distance = {distance}"
+                    )
 
 
 class TestADMMProperties:
@@ -154,12 +154,12 @@ class TestADMMProperties:
             row_errors = np.abs(result.Q.sum(axis=1) - 1.0)
             col_errors = np.abs(result.Q.sum(axis=0) - M)
 
-            assert np.all(
-                row_errors < 1e-1
-            ), f"ADMM row constraints: max error {np.max(row_errors)}"
-            assert np.all(
-                col_errors < 1e-3
-            ), f"ADMM column constraints: max error {np.max(col_errors)}"
+            assert np.all(row_errors < 1e-1), (
+                f"ADMM row constraints: max error {np.max(row_errors)}"
+            )
+            assert np.all(col_errors < 1e-3), (
+                f"ADMM column constraints: max error {np.max(col_errors)}"
+            )
         except CalibrationError:
             # With challenging cases and limited iterations, convergence failure is acceptable
             pass
@@ -183,9 +183,9 @@ class TestADMMProperties:
                 distance = np.linalg.norm(result_dykstra.Q - result_admm.Q, "fro")
                 reference_scale = np.linalg.norm(P, "fro")
 
-                assert (
-                    distance < 0.5 * reference_scale
-                ), f"Dykstra and ADMM too different: distance = {distance}, scale = {reference_scale}"
+                assert distance < 0.5 * reference_scale, (
+                    f"Dykstra and ADMM too different: distance = {distance}, scale = {reference_scale}"
+                )
             except CalibrationError:
                 # With limited iterations, one or both algorithms may not converge
                 pass
@@ -203,12 +203,12 @@ class TestAlgorithmicInvariants:
         # Test Dykstra
         try:
             result_dykstra = calibrate_dykstra(P, M, max_iters=200, verbose=False)
-            assert np.isfinite(
-                result_dykstra.Q
-            ).all(), "Dykstra produced non-finite values"
-            assert np.all(
-                result_dykstra.Q <= 2.0
-            ), "Dykstra produced unreasonably large values"
+            assert np.isfinite(result_dykstra.Q).all(), (
+                "Dykstra produced non-finite values"
+            )
+            assert np.all(result_dykstra.Q <= 2.0), (
+                "Dykstra produced unreasonably large values"
+            )
         except CalibrationError:
             # With limited iterations, convergence failure is acceptable
             pass
@@ -217,9 +217,9 @@ class TestAlgorithmicInvariants:
         try:
             result_admm = calibrate_admm(P, M, max_iters=100, verbose=False)
             assert np.isfinite(result_admm.Q).all(), "ADMM produced non-finite values"
-            assert np.all(
-                result_admm.Q <= 2.0
-            ), "ADMM produced unreasonably large values"
+            assert np.all(result_admm.Q <= 2.0), (
+                "ADMM produced unreasonably large values"
+            )
         except CalibrationError:
             # With limited iterations, convergence failure is acceptable
             pass
@@ -274,15 +274,15 @@ class TestSpecialCases:
             result = calibrate_dykstra(P, M, max_iters=100, tol=1e-12, verbose=False)
 
             # Should converge very quickly (already feasible)
-            assert (
-                result.iterations <= 10
-            ), f"Too many iterations for feasible case: {result.iterations}"
+            assert result.iterations <= 10, (
+                f"Too many iterations for feasible case: {result.iterations}"
+            )
 
             # Should be very close to original
             distance = np.linalg.norm(result.Q - P, "fro")
-            assert (
-                distance < 1e-8
-            ), f"Changed too much from already feasible: {distance}"
+            assert distance < 1e-8, (
+                f"Changed too much from already feasible: {distance}"
+            )
         except CalibrationError:
             # With extremely strict tolerance (1e-12), even feasible cases might not converge
             # within 100 iterations. This is acceptable.

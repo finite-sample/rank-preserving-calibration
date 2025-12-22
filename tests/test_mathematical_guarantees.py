@@ -38,9 +38,9 @@ class TestProjectionCorrectness:
             Y = _project_row_simplex(X)
 
             # Property 1: Result is on simplex
-            assert np.allclose(
-                Y.sum(axis=1), 1.0, atol=1e-12
-            ), "Row sums not equal to 1"
+            assert np.allclose(Y.sum(axis=1), 1.0, atol=1e-12), (
+                "Row sums not equal to 1"
+            )
             assert np.all(Y >= -1e-12), "Negative values in projection"
 
             # Property 2: Projection is idempotent
@@ -143,9 +143,9 @@ class TestEpsilonSlackProjection:
 
         # Check constraint satisfaction
         for i in range(len(z) - 1):
-            assert (
-                z[i + 1] >= z[i] - eps - 1e-12
-            ), f"Constraint violated at {i}: {z[i + 1]} < {z[i]} - {eps}"
+            assert z[i + 1] >= z[i] - eps - 1e-12, (
+                f"Constraint violated at {i}: {z[i + 1]} < {z[i]} - {eps}"
+            )
 
     def test_epsilon_zero_reduces_to_isotonic(self):
         """Test that eps=0 gives standard isotonic projection."""
@@ -154,9 +154,9 @@ class TestEpsilonSlackProjection:
         z_nearly = project_near_isotonic_euclidean(v, eps=0.0)
         z_isotonic = _pav_increasing(v)
 
-        assert np.allclose(
-            z_nearly, z_isotonic, atol=1e-12
-        ), "eps=0 does not reduce to isotonic"
+        assert np.allclose(z_nearly, z_isotonic, atol=1e-12), (
+            "eps=0 does not reduce to isotonic"
+        )
 
     def test_sum_constraint_with_epsilon(self):
         """Test epsilon projection with sum constraint."""
@@ -216,9 +216,9 @@ class TestLambdaPenaltyProx:
         shift = (target_sum - z_no_sum.sum()) / len(v)
         z_manual = z_no_sum + shift
 
-        assert np.allclose(
-            z, z_manual, atol=1e-12
-        ), "Sum constraint implementation incorrect"
+        assert np.allclose(z, z_manual, atol=1e-12), (
+            "Sum constraint implementation incorrect"
+        )
 
 
 class TestAlgorithmicGuarantees:

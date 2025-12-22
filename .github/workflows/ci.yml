@@ -67,7 +67,7 @@ jobs:
       run: uv python install 3.11
 
     - name: Install dependencies
-      run: uv sync
+      run: uv sync --group dev
 
     - name: Run ruff linter
       run: uv run ruff check . --output-format=github

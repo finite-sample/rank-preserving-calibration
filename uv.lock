@@ -2408,7 +2408,7 @@ dev = [
     { name = "pre-commit", specifier = ">=3.0" },
     { name = "pytest", specifier = ">=7.0" },
     { name = "pytest-cov", specifier = ">=4.0" },
-    { name = "ruff", specifier = ">=0.7.0" },
+    { name = "ruff", specifier = "==0.14.6" },
 ]
 examples = [
     { name = "jupyter" },
