@@ -59,15 +59,15 @@ class TestTiesHandling:
         # All runs that converged should give identical results
         if len(results_stable) >= 2:
             for i in range(1, len(results_stable)):
-                assert np.allclose(results_stable[0], results_stable[i], atol=1e-12), (
-                    f"Stable ties not deterministic: run 0 vs {i}"
-                )
+                assert np.allclose(
+                    results_stable[0], results_stable[i], atol=1e-12
+                ), f"Stable ties not deterministic: run 0 vs {i}"
 
         if len(results_group) >= 2:
             for i in range(1, len(results_group)):
-                assert np.allclose(results_group[0], results_group[i], atol=1e-12), (
-                    f"Group ties not deterministic: run 0 vs {i}"
-                )
+                assert np.allclose(
+                    results_group[0], results_group[i], atol=1e-12
+                ), f"Group ties not deterministic: run 0 vs {i}"
 
     def test_stable_vs_group_ties_differences(self):
         """Test that stable and group ties can produce different results."""
@@ -172,9 +172,9 @@ class TestTiesHandling:
         # All runs that converged should give identical results
         if len(results) >= 2:
             for i in range(1, len(results)):
-                assert np.allclose(results[0], results[i], atol=1e-10), (
-                    f"ADMM not deterministic with ties: run 0 vs {i}"
-                )
+                assert np.allclose(
+                    results[0], results[i], atol=1e-10
+                ), f"ADMM not deterministic with ties: run 0 vs {i}"
 
 
 class TestBoundaryConditions:
@@ -354,7 +354,9 @@ class TestErrorConditions:
 
                 # Should have generated feasibility warning
                 assert len(w) > 0
-                assert any("infeasible" in str(warning.message).lower() for warning in w)
+                assert any(
+                    "infeasible" in str(warning.message).lower() for warning in w
+                )
 
                 # Should still produce some result
                 assert result.Q.shape == P.shape

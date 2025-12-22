@@ -114,7 +114,7 @@ feasibility = feasibility_metrics(result.Q, M)
 print(f"Max row error: {feasibility['row']['max_abs_error']}")
 print(f"Max column error: {feasibility['col']['max_abs_error']}")
 
-# Check rank preservation  
+# Check rank preservation
 isotonic = isotonic_metrics(result.Q, P)
 print(f"Max rank violation: {isotonic['max_rank_violation']}")
 print(f"Violation mass: {isotonic['total_violation_mass']}")
@@ -133,7 +133,7 @@ print(f"Max change: {distances['max_abs']}")
 # Evaluate with labeled data (if available)
 if y_true is not None:
     original_nll = nll(y_true, P)
-    calibrated_nll = nll(y_true, result.Q) 
+    calibrated_nll = nll(y_true, result.Q)
     print(f"NLL improvement: {original_nll - calibrated_nll}")
 ```
 
@@ -146,7 +146,7 @@ if y_true is not None:
 | `distance_metrics(Q, P)` | Quantify changes between original and calibrated probabilities |
 | `tie_group_variance(Q, P)` | Assess handling of tied predictions (useful for `ties='group'`) |
 | `nll(y, probs)` | Negative log-likelihood (requires true labels) |
-| `brier(y, probs)` | Brier score (requires true labels) |  
+| `brier(y, probs)` | Brier score (requires true labels) |
 | `top_label_ece(y, probs)` | Expected calibration error for top predictions |
 | `classwise_ece(y, probs)` | Per-class calibration error analysis |
 | `sharpness_metrics(probs)` | Prediction confidence and entropy analysis |
@@ -157,7 +157,7 @@ if y_true is not None:
 ```python
 import numpy as np
 from rank_preserving_calibration import (
-    calibrate_dykstra, feasibility_metrics, isotonic_metrics, 
+    calibrate_dykstra, feasibility_metrics, isotonic_metrics,
     distance_metrics, nll, top_label_ece
 )
 
@@ -166,7 +166,7 @@ result = calibrate_dykstra(P, M)
 
 # 1. Validate constraints
 feasibility = feasibility_metrics(result.Q, M)
-isotonic = isotonic_metrics(result.Q, P) 
+isotonic = isotonic_metrics(result.Q, P)
 print(f"Converged: {result.converged}")
 print(f"Row constraint satisfied: {feasibility['row']['max_abs_error'] < 1e-6}")
 print(f"Rank preserved: {isotonic['max_rank_violation'] < 1e-6}")
@@ -189,7 +189,7 @@ if y_true is not None:
 
 Calibrate using Dykstra's alternating projections (recommended). Supports both strict and nearly isotonic constraints.
 
-### `calibrate_admm(P, M, **kwargs)`  
+### `calibrate_admm(P, M, **kwargs)`
 
 Calibrate using ADMM optimization with penalty parameter `rho`. Supports lambda-penalty nearly isotonic constraints.
 
@@ -236,7 +236,7 @@ The ADMM function returns an `ADMMResult` object with additional convergence his
 
 * **Dykstra's Method**: Uses alternating projections with memory terms to ensure convergence to the intersection of constraint sets. Rows are projected onto the simplex via the algorithm of Duchi et al., and columns are projected via the pool-adjacent-violators algorithm followed by an additive shift to match column totals. This is the recommended method for most applications.
 
-* **Nearly Isotonic Extensions**: 
+* **Nearly Isotonic Extensions**:
   - **Epsilon-slack (Dykstra)**: Projects onto the convex set {z : z[i+1] ≥ z[i] - ε} using coordinate transformation. Maintains theoretical convergence guarantees.
   - **Lambda-penalty (ADMM)**: Uses proximal operator to minimize ||Q - P||² + λ∑max(0, z[i] - z[i+1]). More experimental but provides soft constraints.
 
@@ -258,7 +258,7 @@ Each example uses real datasets and provides complete analysis workflows with bu
 
 **Use Nearly Isotonic When:**
 - Model predictions have good discrimination but need marginal calibration
-- Some predictions are already well-calibrated  
+- Some predictions are already well-calibrated
 - Small rank violations are acceptable in your domain
 - You want to preserve model confidence where possible
 

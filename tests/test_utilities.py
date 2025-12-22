@@ -33,9 +33,9 @@ class TestDataGeneration:
             # Basic validity checks
             assert P.shape == (10, 3)
             assert M.shape == (3,)
-            assert np.allclose(P.sum(axis=1), 1.0), (
-                f"Rows don't sum to 1 for {case_type}"
-            )
+            assert np.allclose(
+                P.sum(axis=1), 1.0
+            ), f"Rows don't sum to 1 for {case_type}"
             assert np.all(P >= 0), f"Negative probabilities in {case_type}"
             assert np.all(M > 0), f"Non-positive marginals in {case_type}"
 
@@ -157,9 +157,9 @@ class TestRandomNumberHandling:
         # Test with a case that varies marginals instead
         P1_skewed, _M1_skewed = create_test_case("skewed", N=10, J=3, seed=42)
         P2_skewed, _M2_skewed = create_test_case("skewed", N=10, J=3, seed=123)
-        assert not np.allclose(P1_skewed, P2_skewed), (
-            "Different seeds produced same skewed results"
-        )
+        assert not np.allclose(
+            P1_skewed, P2_skewed
+        ), "Different seeds produced same skewed results"
 
 
 class TestEntropyCalculations:
@@ -250,9 +250,9 @@ class TestEntropyCalculations:
             "original_entropy"
         ]
 
-        assert entropy_uniform > entropy_concentrated, (
-            f"Uniform entropy ({entropy_uniform}) should be higher than concentrated ({entropy_concentrated})"
-        )
+        assert (
+            entropy_uniform > entropy_concentrated
+        ), f"Uniform entropy ({entropy_uniform}) should be higher than concentrated ({entropy_concentrated})"
 
 
 class TestAnalysisUtilities:

@@ -17,45 +17,45 @@ examples/survey_calibration
 
 ### Medical Diagnosis Calibration
 
-**Dataset**: Wisconsin Breast Cancer Dataset  
-**Scenario**: Deploying diagnostic models across populations with different disease prevalence  
-**Key Features**: Clinical decision thresholds, ROC analysis, cost-benefit analysis  
+**Dataset**: Wisconsin Breast Cancer Dataset
+**Scenario**: Deploying diagnostic models across populations with different disease prevalence
+**Key Features**: Clinical decision thresholds, ROC analysis, cost-benefit analysis
 **Business Impact**: Optimized resource allocation, improved patient outcomes
 
 The medical example demonstrates how rank-preserving calibration maintains diagnostic ranking while adjusting probability estimates for different patient populations. This is critical for deploying AI diagnostic tools across healthcare systems with varying patient demographics.
 
 ### Text Classification & Sentiment Analysis
 
-**Dataset**: 20 Newsgroups (simulated sentiment)  
-**Scenario**: Cross-domain sentiment analysis deployment  
-**Key Features**: Domain adaptation, content moderation, engagement optimization  
+**Dataset**: 20 Newsgroups (simulated sentiment)
+**Scenario**: Cross-domain sentiment analysis deployment
+**Key Features**: Domain adaptation, content moderation, engagement optimization
 **Business Impact**: Improved content recommendation, reduced bias across platforms
 
 This example shows how sentiment models trained on one domain (e.g., movie reviews) can be calibrated for deployment on different platforms (e.g., social media) while preserving relative sentiment rankings.
 
 ### Computer Vision & Image Classification
 
-**Dataset**: Handwritten Digits (sklearn)  
-**Scenario**: OCR system deployment across different applications  
-**Key Features**: Confidence calibration, automated processing thresholds, cost optimization  
+**Dataset**: Handwritten Digits (sklearn)
+**Scenario**: OCR system deployment across different applications
+**Key Features**: Confidence calibration, automated processing thresholds, cost optimization
 **Business Impact**: Reduced manual review costs, improved automation rates
 
 The vision example demonstrates calibrating image classifiers for different deployment contexts (ZIP codes vs. financial documents) where digit frequency distributions vary significantly.
 
 ### Financial Risk Assessment
 
-**Dataset**: Simulated Credit Portfolio  
-**Scenario**: Credit scoring across different economic conditions  
-**Key Features**: Regulatory capital, CECL compliance, economic stress testing  
+**Dataset**: Simulated Credit Portfolio
+**Scenario**: Credit scoring across different economic conditions
+**Key Features**: Regulatory capital, CECL compliance, economic stress testing
 **Business Impact**: Optimized lending decisions, improved risk management
 
 This example shows how credit scoring models can be calibrated for different economic scenarios while maintaining customer ranking, critical for regulatory compliance and portfolio optimization.
 
 ### Survey Research & Demographic Reweighting
 
-**Dataset**: Simulated Political Survey  
-**Scenario**: Correcting demographic bias in survey samples  
-**Key Features**: Population representativeness, statistical significance, bias correction  
+**Dataset**: Simulated Political Survey
+**Scenario**: Correcting demographic bias in survey samples
+**Key Features**: Population representativeness, statistical significance, bias correction
 **Business Impact**: More accurate polling, improved policy insights
 
 The survey example demonstrates how to correct demographic sampling bias while preserving individual response patterns, essential for accurate public opinion research.
@@ -89,7 +89,7 @@ print(f"Converged: {result.converged}")
 
 **Mathematical Guarantees**: Satisfies all constraints within numerical precision
 
-**Broad Applicability**: Works across medical, financial, text, vision, and survey applications  
+**Broad Applicability**: Works across medical, financial, text, vision, and survey applications
 
 **Business Value**: Improves decision-making through better-calibrated uncertainty estimates
 
@@ -98,7 +98,7 @@ print(f"Converged: {result.converged}")
 ## Next Steps
 
 1. **Choose Your Domain**: Start with the example most similar to your use case
-2. **Adapt the Code**: Modify the examples for your specific data and requirements  
+2. **Adapt the Code**: Modify the examples for your specific data and requirements
 3. **Validate Results**: Test calibration quality on your validation data
 4. **Deploy Safely**: Monitor calibration performance in production
 5. **Iterate**: Recalibrate as data distributions evolve

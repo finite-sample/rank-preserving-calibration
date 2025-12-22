@@ -28,7 +28,9 @@ class TestPerformanceOptimizations:
             result_pure = calibrate_dykstra(P, M, max_iters=100, use_jit=False)
 
             # Results should be very close (minor numerical differences expected)
-            np.testing.assert_allclose(result_jit.Q, result_pure.Q, rtol=1e-7, atol=1e-15)
+            np.testing.assert_allclose(
+                result_jit.Q, result_pure.Q, rtol=1e-7, atol=1e-15
+            )
             assert result_jit.converged == result_pure.converged
             assert result_jit.iterations == result_pure.iterations
         except CalibrationError:
@@ -53,7 +55,9 @@ class TestPerformanceOptimizations:
         # Time with JIT
         start = time.perf_counter()
         try:
-            result_jit = calibrate_dykstra(P, M, max_iters=50, use_jit=True, verbose=False)
+            result_jit = calibrate_dykstra(
+                P, M, max_iters=50, use_jit=True, verbose=False
+            )
             time_jit = time.perf_counter() - start
         except CalibrationError:
             pytest.skip("JIT algorithm did not converge in 50 iterations")

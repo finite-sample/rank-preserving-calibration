@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.1] - 2024-12-21
 
 ### Changed
-- **Removed tqdm dependency** 
+- **Removed tqdm dependency**
   - Eliminated optional import patterns for cleaner dependency management
   - Removed `progress_bar` parameter from `calibrate_dykstra` and `calibrate_admm` functions
   - Updated examples and documentation to remove progress bar references

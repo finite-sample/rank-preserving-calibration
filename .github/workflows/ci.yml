@@ -27,24 +27,24 @@ jobs:
             python-version: "3.12"
           - os: ubuntu-latest
             python-version: "3.13"
-        
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Install uv
       uses: astral-sh/setup-uv@v7
       with:
         version: "latest"
-        
+
     - name: Set up Python ${{ matrix.python-version }}
       run: uv python install ${{ matrix.python-version }}
-          
+
     - name: Install dependencies
       run: uv sync --group test
-        
+
     - name: Run tests with coverage
       run: uv run pytest tests/ -v --cov=rank_preserving_calibration --cov-report=xml --cov-report=term
-        
+
     - name: Upload coverage to Codecov
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
       uses: codecov/codecov-action@v4
@@ -57,20 +57,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Install uv
       uses: astral-sh/setup-uv@v7
       with:
         version: "latest"
-    
+
     - name: Set up Python
       run: uv python install 3.11
-        
+
     - name: Install dependencies
       run: uv sync
-        
+
     - name: Run ruff linter
       run: uv run ruff check . --output-format=github
-      
+
     - name: Run ruff formatter check
       run: uv run ruff format --check .

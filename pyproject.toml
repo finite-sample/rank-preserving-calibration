@@ -103,4 +103,3 @@ known_first_party = ["rank_preserving_calibration"]
 DEP002 = ["sphinx", "furo", "sphinx-autodoc-typehints", "sphinx-copybutton", "myst-parser", "nbsphinx", "jupyter", "ipykernel", "scikit-learn", "matplotlib", "seaborn", "plotly", "pandas"]
 # Test dependencies used in tests directory
 DEP004 = ["pytest", "hypothesis", "pytest-cov"]
-

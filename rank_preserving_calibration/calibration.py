@@ -198,11 +198,11 @@ def _validate_inputs(
             raise CalibrationError("max_iters must be a positive integer")
 
     match tol:
-        case x if not isinstance(x, (int, float)) or x <= 0:
+        case x if not isinstance(x, int | float) or x <= 0:
             raise CalibrationError("tol must be a positive number")
 
     match feasibility_tol:
-        case x if not isinstance(x, (int, float)) or x < 0:
+        case x if not isinstance(x, int | float) or x < 0:
             raise CalibrationError("feasibility_tol must be non-negative")
 
     return N, J

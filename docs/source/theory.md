@@ -7,15 +7,15 @@ This section explains the mathematical foundations of rank-preserving calibratio
 Given a probability matrix $P \in \mathbb{R}^{N \times J}$ where each row represents a probability distribution over $J$ classes for $N$ samples, we want to find a calibrated matrix $Q$ that satisfies:
 
 1. **Row constraints**: Each row is a valid probability distribution
-   
+
    $$\sum_{j=1}^J Q_{ij} = 1, \quad Q_{ij} \geq 0 \quad \forall i,j$$
 
 2. **Column constraints**: Column sums match target marginals
-   
+
    $$\sum_{i=1}^N Q_{ij} = M_j \quad \forall j$$
 
 3. **Isotonic constraints**: Within each column, values are non-decreasing when sorted by original scores
-   
+
    $$Q_{i_1,j} \leq Q_{i_2,j} \text{ if } P_{i_1,j} \leq P_{i_2,j}$$
 
 The optimization problem is:
@@ -35,13 +35,13 @@ Dykstra's method alternates between projecting onto different constraint sets wh
 2. For $k = 0, 1, 2, \ldots$:
 
    a. **Row projection**: Project each row onto the probability simplex
-      
+
       $$\tilde{Q}^{(k+1)} = \text{proj}_{\text{simplex}}(Q^{(k)} - U^{(k)})$$
 
       Update memory: $U^{(k+1)} = \tilde{Q}^{(k+1)} - (Q^{(k)} - U^{(k)})$
 
    b. **Column projection**: Project each column to satisfy isotonic and sum constraints
-      
+
       $$Q^{(k+1)} = \text{proj}_{\text{isotonic}}(\tilde{Q}^{(k+1)} - V^{(k)})$$
 
       Update memory: $V^{(k+1)} = Q^{(k+1)} - (\tilde{Q}^{(k+1)} - V^{(k)})$
@@ -73,7 +73,7 @@ where $A$ encodes the linear constraints and $b$ the target values.
 **Algorithm:**
 
 1. $Q$-update: Solve the quadratic subproblem
-2. $Z$-update: Apply isotonic projections  
+2. $Z$-update: Apply isotonic projections
 3. $\Lambda$-update: Dual variable update
 
 ## Nearly Isotonic Calibration
@@ -100,7 +100,7 @@ where the sum is over pairs with $P_{i_1,j} \leq P_{i_2,j}$.
 
 **Dykstra's Method:**
 - Guaranteed convergence to the intersection of constraint sets
-- Linear convergence rate under regularity conditions  
+- Linear convergence rate under regularity conditions
 - Each iteration maintains feasibility of the most recent constraint
 
 **ADMM:**

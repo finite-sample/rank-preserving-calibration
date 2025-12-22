@@ -125,9 +125,9 @@ class TestADMMCore:
 
         # Results should be close (not identical due to different algorithms)
         distance = np.linalg.norm(result_dykstra.Q - result_admm.Q, "fro")
-        assert distance < 0.1, (
-            f"Dykstra and ADMM results too different: distance = {distance}"
-        )
+        assert (
+            distance < 0.1
+        ), f"Dykstra and ADMM results too different: distance = {distance}"
 
 
 class TestInputValidation:
@@ -181,9 +181,9 @@ class TestAlgorithmProperties:
 
         # All results should be identical
         for i in range(1, len(results)):
-            assert np.allclose(results[0], results[i], atol=1e-14), (
-                f"Non-deterministic behavior: run 0 vs {i}"
-            )
+            assert np.allclose(
+                results[0], results[i], atol=1e-14
+            ), f"Non-deterministic behavior: run 0 vs {i}"
 
     def test_constraint_satisfaction(self):
         """Test that all constraints are satisfied to machine precision."""
@@ -205,9 +205,9 @@ class TestAlgorithmProperties:
             order = np.argsort(P[:, j])
             calibrated_sorted = result.Q[order, j]
             diffs = np.diff(calibrated_sorted)
-            assert np.all(diffs >= -1e-12), (
-                f"Isotonic constraint violated in column {j}"
-            )
+            assert np.all(
+                diffs >= -1e-12
+            ), f"Isotonic constraint violated in column {j}"
 
 
 class TestDataGeneration:

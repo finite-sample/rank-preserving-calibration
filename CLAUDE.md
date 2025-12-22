@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2. **ADMM optimization** (`calibrate_admm`) - alternative solver with convergence history
 
 The package projects probability matrices onto the intersection of:
-- Row-simplex constraints (each row sums to 1, non-negative)  
+- Row-simplex constraints (each row sums to 1, non-negative)
 - Isotonic column marginals (values non-decreasing when sorted by original scores, with target column sums)
 
 ## Code Architecture
@@ -24,14 +24,14 @@ The package projects probability matrices onto the intersection of:
 
 ### Key Classes and Functions
 - `calibrate_dykstra(P, M, **kwargs)`: Main calibration function using Dykstra's method
-- `calibrate_admm(P, M, **kwargs)`: Alternative ADMM-based calibration  
+- `calibrate_admm(P, M, **kwargs)`: Alternative ADMM-based calibration
 - `CalibrationResult`: Standard result object with calibrated matrix Q and diagnostics
 - `ADMMResult`: ADMM-specific result with convergence history
 - `CalibrationError`: Custom exception for invalid inputs
 
 ### Nearly Isotonic Functions (New)
 - `project_near_isotonic_euclidean(v, eps, sum_target=None)`: Epsilon-slack projection
-- `prox_near_isotonic(v, lam)`: Lambda-penalty prox operator  
+- `prox_near_isotonic(v, lam)`: Lambda-penalty prox operator
 - `prox_near_isotonic_with_sum(v, lam, sum_target)`: Prox with sum constraint
 
 ### Algorithm Implementation Details
@@ -91,13 +91,13 @@ The package provides comprehensive documentation examples at `/docs/source/examp
 
 Testing utilities are located in `tests/data_helpers.py`:
 - `create_test_case()`: Generate synthetic test data for various scenarios
-- `create_realistic_classifier_case()`: Simulate miscalibrated classifiers  
+- `create_realistic_classifier_case()`: Simulate miscalibrated classifiers
 - `create_survey_reweighting_case()`: Generate survey bias scenarios
 - `analyze_calibration_result()`: Analyze calibration impact
 
 Test data scenarios support:
 - `"random"`: Dirichlet-generated probabilities
-- `"skewed"`: Biased class distributions  
+- `"skewed"`: Biased class distributions
 - `"linear"`: Linear trends for rank preservation testing
 - `"challenging"`: Difficult cases with potential feasibility issues
 
@@ -114,7 +114,7 @@ result = calibrate_dykstra(P, M, nearly=nearly_params)
 - Uses Euclidean projection onto convex slack constraint set
 - Maintains convergence guarantees of Dykstra's method
 
-### Lambda-Penalty Approach (ADMM) 
+### Lambda-Penalty Approach (ADMM)
 ```python
 nearly_params = {"mode": "lambda", "lam": 1.0}
 result = calibrate_admm(P, M, nearly=nearly_params)
@@ -188,7 +188,7 @@ open _build/html/index.html
 ## CI/CD and Quality
 
 The repository uses GitHub Actions for CI with:
-- Python 3.11+ testing environment  
+- Python 3.11+ testing environment
 - Installation via `pip install -e ".[testing]"`
 - Test execution with `python -m pytest tests/ -v`
 - Automated workflows for both CI testing and releases
