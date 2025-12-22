@@ -551,7 +551,7 @@ def calibrate_dykstra(
     Returns:
         CalibrationResult object containing:
             - Q: Calibrated probability matrix of shape (N, J)
-            - converged: True if algorithm converged within tolerance
+            - converged: Always True (failures raise CalibrationError instead)
             - iterations: Number of iterations performed
             - max_row_error: Maximum absolute row sum error
             - max_col_error: Maximum absolute column sum error
@@ -559,7 +559,7 @@ def calibrate_dykstra(
             - final_change: Final relative change in solution
 
     Raises:
-        CalibrationError: If inputs are invalid (wrong shapes, negative values, etc.)
+        CalibrationError: If inputs are invalid, algorithm fails to converge, or other errors occur.
         ValueError: If ties parameter is not "stable" or "group"
 
     Examples:
@@ -584,6 +584,7 @@ def calibrate_dykstra(
         - Memory complexity is O(N*J) for the probability matrices
         - Time complexity per iteration is O(N*J*log(N)) due to sorting
         - For best performance, ensure sum(M) ≈ N and use numba if available
+        - Raises CalibrationError on convergence failure instead of returning unreliable results
     """
     _configure_logging(verbose)
     _, J = _validate_inputs(P, M, max_iters, tol, feasibility_tol)
@@ -695,6 +696,16 @@ def calibrate_dykstra(
     max_col_error = float(np.max(np.abs(col_sums - M)))
     max_rank_violation = _compute_rank_violation(Q, P)
 
+    # Fail fast on non-convergence instead of returning unreliable results
+    if not converged:
+        raise CalibrationError(
+            f"Calibration failed to converge after {iteration} iterations. "
+            f"Final change: {final_change:.2e} (tolerance: {tol:.2e}). "
+            f"Max row error: {max_row_error:.2e}, max col error: {max_col_error:.2e}. "
+            f"Try: increasing max_iters, relaxing tol, using nearly-isotonic constraints "
+            f"(nearly={{'mode': 'epsilon', 'eps': 0.01}}), or consider temperature scaling."
+        )
+
     return CalibrationResult(
         Q=Q,
         converged=converged,
@@ -754,7 +765,7 @@ def calibrate_admm(
     Returns:
         ADMMResult object containing:
             - Q: Calibrated probability matrix of shape (N, J)
-            - converged: True if algorithm converged within tolerance
+            - converged: Always True (failures raise CalibrationError instead)
             - iterations: Number of iterations performed
             - max_row_error: Maximum absolute row sum error
             - max_col_error: Maximum absolute column sum error
@@ -765,7 +776,7 @@ def calibrate_admm(
             - dual_residuals: List of dual residual norms per iteration
 
     Raises:
-        CalibrationError: If inputs are invalid (wrong shapes, negative values, etc.)
+        CalibrationError: If inputs are invalid, algorithm fails to converge, or other errors occur.
         ValueError: If ties parameter is not "stable" or "group"
 
     Examples:
@@ -929,17 +940,28 @@ def calibrate_admm(
         final_change = float("inf")
 
     # Snap to the exact projection (guarantees distance optimality over feasible set)
-    snap = calibrate_dykstra(
-        P,
-        M,
-        max_iters=1500,
-        tol=1e-10,
-        rtol=0.0,
-        verbose=False,
-        detect_cycles=False,
-        ties="stable",
-    )
-    Q = snap.Q
+    try:
+        snap = calibrate_dykstra(
+            P,
+            M,
+            max_iters=1500,
+            tol=1e-10,
+            rtol=0.0,
+            verbose=False,
+            detect_cycles=False,
+            ties="stable",
+        )
+        Q = snap.Q
+    except CalibrationError:
+        # If snap-to-projection fails, use ADMM result as-is
+        # This is acceptable since ADMM provides an approximate solution
+        if verbose:
+            warnings.warn(
+                "Final snap-to-projection failed; using ADMM solution as-is",
+                UserWarning,
+                stacklevel=2,
+            )
+        pass  # Q remains the ADMM result
 
     # Diagnostics
     row_sums = Q.sum(axis=1)
@@ -947,6 +969,16 @@ def calibrate_admm(
     max_row_error = float(np.max(np.abs(row_sums - 1.0)))
     max_col_error = float(np.max(np.abs(col_sums - M)))
     max_rank_violation = _compute_rank_violation(Q, P)
+
+    # Fail fast on non-convergence instead of returning unreliable results
+    if not converged:
+        raise CalibrationError(
+            f"ADMM calibration failed to converge after {iteration + 1} iterations. "
+            f"Final primal residual: {primal_residuals[-1]:.2e}, "
+            f"dual residual: {dual_residuals[-1]:.2e} (tolerance: {tol:.2e}). "
+            f"Try: increasing max_iters, adjusting rho parameter, relaxing tol, "
+            f"or consider Dykstra's method with nearly-isotonic constraints."
+        )
 
     return ADMMResult(
         Q=Q,
