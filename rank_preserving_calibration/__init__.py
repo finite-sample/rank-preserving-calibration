@@ -62,6 +62,7 @@ from .nearly import (
     prox_near_isotonic,
     prox_near_isotonic_with_sum,
 )
+from .ovr_isotonic import calibrate_ovr_isotonic
 
 # What gets imported with: from rank_preserving_calibration import *
 __all__ = [
@@ -73,6 +74,7 @@ __all__ = [
     "brier",
     "calibrate_admm",
     "calibrate_dykstra",
+    "calibrate_ovr_isotonic",
     "classwise_ece",
     "distance_metrics",
     # Metrics

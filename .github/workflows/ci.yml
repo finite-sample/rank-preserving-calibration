@@ -15,18 +15,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Python 3.11 on all platforms
-          - os: ubuntu-latest
-            python-version: "3.11"
-          - os: windows-latest
-            python-version: "3.11"
-          - os: macos-latest
-            python-version: "3.11"
-          # Python 3.12 and 3.13 only on Linux
+          # Python 3.12 on all platforms
           - os: ubuntu-latest
             python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.12"
+          # Python 3.13 and 3.14 only on Linux
           - os: ubuntu-latest
             python-version: "3.13"
+          - os: ubuntu-latest
+            python-version: "3.14"
 
     steps:
     - uses: actions/checkout@v4
@@ -64,7 +64,7 @@ jobs:
         version: "latest"
 
     - name: Set up Python
-      run: uv python install 3.11
+      run: uv python install 3.12
 
     - name: Install dependencies
       run: uv sync --group dev

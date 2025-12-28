@@ -7,7 +7,7 @@ name = "rank_preserving_calibration"
 version = "0.7.1"
 description = "Rank-preserving calibration of multiclass probabilities via Dykstra's projections and ADMM."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 authors = [
   { name = "Gaurav Sood", email = "contact@gsood.com" },
 ]
@@ -17,9 +17,9 @@ classifiers = [
   "Intended Audience :: Science/Research",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Scientific/Engineering :: Mathematics",
 ]
 dependencies = [
@@ -55,12 +55,12 @@ module-name = "rank_preserving_calibration"
 module-root = ""
 
 [dependency-groups]
-dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff==0.14.6", "pre-commit>=3.0", "numba>=0.56"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff==0.14.6", "pre-commit>=3.0", "numba>=0.56", "pydoclint>=0.3.0", "pyright>=1.1.0"]
 test = ["pytest>=7.0", "pytest-cov>=4.0", "hypothesis>=6.0"]
 examples = ["scipy>=1.0", "matplotlib>=3.0", "jupyter", "seaborn>=0.11", "scikit-learn>=1.0", "plotly>=5.0", "pandas>=1.5"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 88
 exclude = ["**/.*", "build/", "dist/", "venv/", ".venv/", "docs/source/examples/*.ipynb"]
 
@@ -103,3 +103,22 @@ known_first_party = ["rank_preserving_calibration"]
 DEP002 = ["sphinx", "furo", "sphinx-autodoc-typehints", "sphinx-copybutton", "myst-parser", "nbsphinx", "jupyter", "ipykernel", "scikit-learn", "matplotlib", "seaborn", "plotly", "pandas"]
 # Test dependencies used in tests directory
 DEP004 = ["pytest", "hypothesis", "pytest-cov"]
+
+[tool.pydoclint]
+style = "google"
+exclude = [".venv", "venv", "env", ".git", "docs", "_build", "dist", ".*\\.egg-info", "tests"]
+require-return-section-when-returning-nothing = false
+arg-type-hints-in-signature = true
+check-return-types = true
+check-yield-types = true
+
+[tool.pyright]
+include = ["rank_preserving_calibration"]
+exclude = ["**/__pycache__", ".venv", "venv", "env", ".git", "docs", "_build", "dist", ".*\\.egg-info"]
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportMissingTypeStubs = false
+reportUnusedImport = true
+reportUnusedFunction = false
+reportUnusedVariable = true
+pythonVersion = "3.12"

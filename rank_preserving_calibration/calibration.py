@@ -11,15 +11,19 @@ import logging
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
-# Import JIT-compiled functions if available
 from ._numba_utils import get_jit_functions
 from .nearly import (
     project_near_isotonic_euclidean,  # epsilon-slack, with exact sum shift
     prox_near_isotonic,  # lambda-penalty (exact prox if provided version)
 )
+
+type NDArrayFloat = np.ndarray[Any, np.dtype[np.floating[Any]]]
+type ColumnOrders = list[np.ndarray]
+type CallbackFunction = Callable[[int, float, np.ndarray], bool] | None
 
 _jit_funcs = get_jit_functions()
 
@@ -452,7 +456,7 @@ def _compute_rank_violation(Q: np.ndarray, P: np.ndarray) -> float:
 
 
 def _detect_cycling(
-    Q_history: list[np.ndarray], Q: np.ndarray, cycle_tol: float = 1e-12
+    Q_history: list[NDArrayFloat], Q: NDArrayFloat, cycle_tol: float = 1e-12
 ) -> bool:
     """Very conservative cycle detection (usually disabled)."""
     matches = 0
@@ -467,11 +471,11 @@ def _detect_cycling(
 def _polish_to_intersection(
     Q: np.ndarray,
     M: np.ndarray,
-    column_orders: list[np.ndarray],
+    column_orders: ColumnOrders,
     *,
     rtol: float = 0.0,
     ties: str = "stable",
-    score_sorted: list[np.ndarray] | None = None,
+    score_sorted: list[np.ndarray | None] | None = None,
     max_iters: int = 200,
     row_atol: float = 1e-12,
     col_atol: float = 1e-10,
@@ -490,7 +494,7 @@ def _polish_to_intersection(
                 float(M[j]),
                 rtol=rtol,
                 ties=ties,
-                score_sorted=score_sorted[j],
+                score_sorted=score_sorted[j] if score_sorted else None,
             )
         if np.allclose(Q.sum(axis=1), 1.0, atol=row_atol) and np.allclose(
             Q.sum(axis=0), M, atol=col_atol
@@ -512,7 +516,7 @@ def calibrate_dykstra(
     rtol: float = 0.0,  # strict isotone by default
     feasibility_tol: float = 0.1,
     verbose: bool = False,
-    callback: Callable[[int, float, np.ndarray], bool] | None = None,
+    callback: CallbackFunction = None,
     detect_cycles: bool = False,  # default off for determinism
     cycle_window: int = 10,
     nearly: dict | None = None,
@@ -602,13 +606,13 @@ def calibrate_dykstra(
 
     # Precompute column orders once (stable)
     column_orders = [np.argsort(P[:, j], kind="mergesort") for j in range(J)]
-    score_sorted = (
+    score_sorted: list[np.ndarray | None] = (
         [P[ord_j, j] for j, ord_j in enumerate(column_orders)]
         if ties == "group"
         else [None] * J
     )
 
-    Q_history: list[np.ndarray] | None = [] if detect_cycles else None
+    Q_history: list[NDArrayFloat] | None = [] if detect_cycles else None
     converged = False
     final_change = float("inf")
 
@@ -815,7 +819,7 @@ def calibrate_admm(
 
     # Precompute column orders once (stable)
     column_orders = [np.argsort(P[:, j], kind="mergesort") for j in range(J)]
-    score_sorted = (
+    score_sorted: list[np.ndarray | None] = (
         [P[ord_j, j] for j, ord_j in enumerate(column_orders)]
         if ties == "group"
         else [None] * J
@@ -864,7 +868,9 @@ def calibrate_admm(
                 idx = column_orders[j]
                 v_sorted = Q_unconstrained[idx, j]
                 if ties == "group" and score_sorted[j] is not None:
-                    lens = _run_lengths_of_equals(score_sorted[j])
+                    score_j = score_sorted[j]
+                    assert score_j is not None  # Type narrowing for pyright
+                    lens = _run_lengths_of_equals(score_j)
                     pos = 0
                     y_group = np.empty(lens.size, dtype=np.float64)
                     for g, L in enumerate(lens):

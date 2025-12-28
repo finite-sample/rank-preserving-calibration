@@ -16,7 +16,8 @@ The package projects probability matrices onto the intersection of:
 ## Code Architecture
 
 ### Core Module Structure
-- `rank_preserving_calibration/calibration.py`: Main algorithms and result classes
+- `rank_preserving_calibration/calibration.py`: Main algorithms and result classes (Dykstra, ADMM)
+- `rank_preserving_calibration/ovr_isotonic.py`: One-vs-Rest isotonic regression
 - `rank_preserving_calibration/nearly.py`: Nearly isotonic projection utilities
 - `rank_preserving_calibration/__init__.py`: Public API exports and legacy aliases
 - `examples/data_helpers.py`: Synthetic data generation utilities (not part of main package)
