@@ -34,6 +34,13 @@ __author__ = "Gaurav Sood"
 __email__ = "gsood07@gmail.com"
 
 # Public API: solvers and results
+# Public API: analysis utilities for flatness and shift diagnostics
+from .analysis import (
+    compare_calibration_methods,
+    flatness_bound,
+    flatness_metrics,
+    marginal_shift_metrics,
+)
 from .calibration import (
     ADMMResult,
     CalibrationError,
@@ -42,16 +49,37 @@ from .calibration import (
     calibrate_dykstra,
 )
 
+# Public API: KL divergence calibration
+from .kl_calibration import (
+    KLCalibrationResult,
+    KLParetoResult,
+    calibrate_kl,
+    calibrate_kl_pareto,
+    calibrate_kl_soft,
+)
+
+# Public API: KL nearly-isotonic utilities
+from .kl_nearly import (
+    project_near_kl_isotonic,
+    prox_kl_near_isotonic,
+)
+
 # Public API: metrics (feasibility, isotonicity, distances, scoring, sharpness, AUC deltas)
+# Public API: KL divergence metrics
 from .metrics import (
     auc_deltas,
     brier,
     classwise_ece,
+    column_variance,
     distance_metrics,
     feasibility_metrics,
+    informativeness_ratio,
     isotonic_metrics,
+    kl_divergence,
     nll,
+    reverse_kl_divergence,
     sharpness_metrics,
+    symmetrized_kl,
     tie_group_variance,
     top_label_ece,
 )
@@ -62,28 +90,65 @@ from .nearly import (
     prox_near_isotonic,
     prox_near_isotonic_with_sum,
 )
+from .ovr_isotonic import calibrate_ovr_isotonic
+
+# Public API: soft calibration with tunable trade-offs
+from .soft_calibration import (
+    SoftCalibrationResult,
+    calibrate_soft,
+    calibrate_soft_admm,
+)
+
+# Public API: two-stage IPF-based calibration
+from .two_stage import (
+    IPFResult,
+    TwoStageResult,
+    calibrate_ipf,
+    calibrate_two_stage,
+)
 
 # What gets imported with: from rank_preserving_calibration import *
 __all__ = [
     "ADMMResult",
-    # Solvers & results
     "CalibrationError",
     "CalibrationResult",
+    "IPFResult",
+    "KLCalibrationResult",
+    "KLParetoResult",
+    "SoftCalibrationResult",
+    "TwoStageResult",
     "auc_deltas",
     "brier",
     "calibrate_admm",
     "calibrate_dykstra",
+    "calibrate_ipf",
+    "calibrate_kl",
+    "calibrate_kl_pareto",
+    "calibrate_kl_soft",
+    "calibrate_ovr_isotonic",
+    "calibrate_soft",
+    "calibrate_soft_admm",
+    "calibrate_two_stage",
     "classwise_ece",
+    "column_variance",
+    "compare_calibration_methods",
     "distance_metrics",
-    # Metrics
     "feasibility_metrics",
+    "flatness_bound",
+    "flatness_metrics",
+    "informativeness_ratio",
     "isotonic_metrics",
+    "kl_divergence",
+    "marginal_shift_metrics",
     "nll",
-    # Nearly-isotonic utilities
     "project_near_isotonic_euclidean",
+    "project_near_kl_isotonic",
+    "prox_kl_near_isotonic",
     "prox_near_isotonic",
     "prox_near_isotonic_with_sum",
+    "reverse_kl_divergence",
     "sharpness_metrics",
+    "symmetrized_kl",
     "tie_group_variance",
     "top_label_ece",
 ]

@@ -1,0 +1,16 @@
+\begin{table}[t]
+\centering
+\caption{Synthetic experiment: tradeoff between RMSE to true target posterior and rank preservation. Logit-shift achieves near-zero RMSE but breaks ranks; strict RPC preserves ranks exactly but deviates from the optimal posterior.}
+\label{tab:synthetic}
+\begin{tabular}{lccc}
+\toprule
+Method & RMSE to Target & Rank Rate & Max Violation \\
+\midrule
+original & 0.0805 & 1.000 & 0.0000 \\
+logit\_shift & 0.0000 & 0.977 & 0.2754 \\
+rpc\_strict & 0.2646 & 1.000 & 0.0000 \\
+rpc\_eps\_0.01 & 0.2459 & 0.867 & 0.0100 \\
+rpc\_eps\_0.05 & 0.2146 & 0.836 & 0.0500 \\
+\bottomrule
+\end{tabular}
+\end{table}

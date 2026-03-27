@@ -3,7 +3,9 @@ repos:
     rev: v4.6.0
     hooks:
       - id: trailing-whitespace
+        exclude: '\.ipynb$'
       - id: end-of-file-fixer
+        exclude: '\.ipynb$'
       - id: check-merge-conflict
       - id: check-case-conflict
       - id: check-json
@@ -11,13 +13,15 @@ repos:
       - id: check-yaml
       - id: pretty-format-json
         args: ['--autofix']
+        exclude: '\.ipynb$'
       - id: check-added-large-files
+        exclude: '\.ipynb$'
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.6
     hooks:
-      # Run the linter with auto-fix for developers
       - id: ruff
         args: [--fix]
-      # Run the formatter with auto-fix for developers
+        exclude: '^(examples/|ms/)'
       - id: ruff-format
+        exclude: '^(examples/|ms/)'

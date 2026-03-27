@@ -9,3 +9,13 @@
 # Documentation build artifacts
 docs/_build/
 /.hypothesis
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+/ms/experiments/__pycache__
+ms/kl_theory.log
+ms/ms.aux
+ms/ms.bbl
+ms/ms.blg
+ms/ms.log
+ms/ms.out

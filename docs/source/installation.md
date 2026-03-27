@@ -2,8 +2,8 @@
 
 ## Requirements
 
-* Python 3.11 or higher
-* NumPy 1.18 or higher
+* Python 3.12 or higher
+* NumPy 1.20 or higher
 
 ## Basic Installation
 
@@ -18,7 +18,7 @@ pip install rank_preserving_calibration
 For development, clone the repository and install in editable mode:
 
 ```bash
-git clone https://github.com/finite_sample/rank_preserving_calibration.git
+git clone https://github.com/finite-sample/rank_preserving_calibration.git
 cd rank_preserving_calibration
 pip install -e .
 ```

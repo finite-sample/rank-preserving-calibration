@@ -1,0 +1,21 @@
+\begin{table}[t]
+\centering
+\small
+\caption{Real-data experiments with shifted class distributions. Results averaged over 5 random seeds. RPC-strict achieves exact column totals and rank preservation where it converges; on \texttt{digits} (10 classes with extreme shift), strict convergence fails and practitioners should use the nearly-isotonic variant.}
+\label{tab:realdata}
+\begin{tabular}{llcccc}
+\toprule
+Dataset & Method & Brier $\downarrow$ & ECE $\downarrow$ & Rank Rate $\uparrow$ & Col Err $\downarrow$ \\
+\midrule
+digits & logit\_shift & 0.156$\pm$0.036 & 0.134$\pm$0.038 & 0.922$\pm$0.020 & 49.18$\pm$16.54 \\
+digits & original & 0.125$\pm$0.021 & 0.221$\pm$0.027 & 1.000$\pm$0.000 & 89.62$\pm$24.99 \\
+digits & rpc\_eps\_0.02 & 0.254$\pm$0.099 & 0.236$\pm$0.050 & 0.770$\pm$0.022 & 0.00$\pm$0.00 \\
+digits & rpc\_strict & --- & --- & --- & --- \\
+\midrule
+wine & logit\_shift & 0.051$\pm$0.046 & 0.064$\pm$0.048 & 0.977$\pm$0.013 & 3.14$\pm$2.30 \\
+wine & original & 0.049$\pm$0.013 & 0.121$\pm$0.025 & 1.000$\pm$0.000 & 6.64$\pm$2.62 \\
+wine & rpc\_eps\_0.02 & 0.097$\pm$0.083 & 0.082$\pm$0.057 & 0.860$\pm$0.057 & 0.00$\pm$0.00 \\
+wine & rpc\_strict & 0.101$\pm$0.087 & 0.079$\pm$0.052 & 1.000$\pm$0.000 & 0.00$\pm$0.00 \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -10,6 +10,91 @@ def _safe_log(x: np.ndarray, eps: float = 1e-15) -> np.ndarray:
     return np.log(np.clip(x, eps, 1.0))
 
 
+# ---------- KL Divergence ----------
+
+
+def kl_divergence(Q: np.ndarray, R: np.ndarray, eps: float = 1e-15) -> float:
+    """Compute KL divergence KL(Q||R) = sum Q * log(Q/R).
+
+    The KL divergence measures how much Q differs from R, where R is
+    the reference distribution. Uses convention 0 * log(0/x) = 0.
+
+    Args:
+        Q: Probability matrix of shape (N, J).
+        R: Reference probability matrix of shape (N, J).
+        eps: Small constant for numerical stability.
+
+    Returns:
+        KL divergence value (non-negative).
+
+    Examples:
+        >>> import numpy as np
+        >>> from rank_preserving_calibration import kl_divergence
+        >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
+        >>> Q = np.array([[0.6, 0.3, 0.1], [0.4, 0.4, 0.2]])
+        >>> kl = kl_divergence(Q, P)
+        >>> print(f"KL divergence: {kl:.4f}")
+    """
+    Q = np.asarray(Q, dtype=np.float64)
+    R = np.asarray(R, dtype=np.float64)
+
+    mask = Q > eps
+    kl = np.zeros_like(Q)
+    kl[mask] = Q[mask] * (_safe_log(Q[mask]) - _safe_log(R[mask]))
+
+    return float(np.sum(kl))
+
+
+def reverse_kl_divergence(Q: np.ndarray, R: np.ndarray, eps: float = 1e-15) -> float:
+    """Compute reverse KL divergence KL(R||Q) = sum R * log(R/Q).
+
+    The reverse KL divergence has different properties than forward KL:
+    - Forward KL(Q||R) is mean-seeking (Q spreads over modes of R)
+    - Reverse KL(R||Q) is mode-seeking (Q focuses on main mode of R)
+
+    Args:
+        Q: Probability matrix of shape (N, J).
+        R: Reference probability matrix of shape (N, J).
+        eps: Small constant for numerical stability.
+
+    Returns:
+        Reverse KL divergence value (non-negative).
+
+    Examples:
+        >>> import numpy as np
+        >>> from rank_preserving_calibration import reverse_kl_divergence
+        >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
+        >>> Q = np.array([[0.6, 0.3, 0.1], [0.4, 0.4, 0.2]])
+        >>> rkl = reverse_kl_divergence(Q, P)
+    """
+    return kl_divergence(R, Q, eps=eps)
+
+
+def symmetrized_kl(Q: np.ndarray, R: np.ndarray, eps: float = 1e-15) -> float:
+    """Compute symmetrized KL divergence (Jensen-Shannon related).
+
+    Symmetrized KL = 0.5 * (KL(Q||R) + KL(R||Q))
+
+    This is symmetric in Q and R, unlike the standard KL divergence.
+
+    Args:
+        Q: Probability matrix of shape (N, J).
+        R: Reference probability matrix of shape (N, J).
+        eps: Small constant for numerical stability.
+
+    Returns:
+        Symmetrized KL divergence value (non-negative).
+
+    Examples:
+        >>> import numpy as np
+        >>> from rank_preserving_calibration import symmetrized_kl
+        >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
+        >>> Q = np.array([[0.6, 0.3, 0.1], [0.4, 0.4, 0.2]])
+        >>> skl = symmetrized_kl(Q, P)
+    """
+    return 0.5 * (kl_divergence(Q, R, eps) + kl_divergence(R, Q, eps))
+
+
 # ---------- Feasibility & invariants ----------
 
 
@@ -216,6 +301,25 @@ def nll(y: np.ndarray, probs: np.ndarray) -> float:
 
 
 def brier(y: np.ndarray, probs: np.ndarray) -> float:
+    """Compute Brier score for multiclass classification.
+
+    The Brier score measures the mean squared difference between predicted
+    probabilities and one-hot encoded true labels. Lower is better.
+
+    Args:
+        y: True class labels as integers of shape (N,).
+        probs: Probability matrix of shape (N, J).
+
+    Returns:
+        Brier score (mean squared error).
+
+    Examples:
+        >>> import numpy as np
+        >>> y = np.array([0, 1, 2])
+        >>> probs = np.array([[0.8, 0.1, 0.1], [0.2, 0.7, 0.1], [0.1, 0.2, 0.7]])
+        >>> score = brier(y, probs)
+        >>> print(f"Brier score: {score:.4f}")
+    """
     y = np.asarray(y, dtype=np.int64)
     probs = np.asarray(probs, dtype=np.float64)
     N, _J = probs.shape
@@ -225,6 +329,30 @@ def brier(y: np.ndarray, probs: np.ndarray) -> float:
 
 
 def top_label_ece(y: np.ndarray, probs: np.ndarray, n_bins: int = 15) -> dict:
+    """Compute Expected Calibration Error for top-label predictions.
+
+    Bins predictions by confidence (max probability) and measures the gap
+    between confidence and accuracy in each bin. ECE is the weighted average
+    of these gaps, and MCE is the maximum gap.
+
+    Args:
+        y: True class labels as integers of shape (N,).
+        probs: Probability matrix of shape (N, J).
+        n_bins: Number of confidence bins (default 15).
+
+    Returns:
+        Dictionary containing:
+            - "ece": Expected Calibration Error (weighted average gap)
+            - "mce": Maximum Calibration Error (max gap across bins)
+            - "bins": List of (count, mean_confidence, accuracy) per bin
+
+    Examples:
+        >>> import numpy as np
+        >>> y = np.array([0, 1, 2])
+        >>> probs = np.array([[0.8, 0.1, 0.1], [0.2, 0.7, 0.1], [0.1, 0.2, 0.7]])
+        >>> ece_result = top_label_ece(y, probs)
+        >>> print(f"ECE: {ece_result['ece']:.4f}")
+    """
     y = np.asarray(y, dtype=np.int64)
     probs = np.asarray(probs, dtype=np.float64)
     conf = probs.max(axis=1)
@@ -253,6 +381,33 @@ def top_label_ece(y: np.ndarray, probs: np.ndarray, n_bins: int = 15) -> dict:
 def classwise_ece(
     y: np.ndarray, probs: np.ndarray, n_bins: int = 15, balanced: bool = False
 ) -> dict:
+    """Compute class-wise Expected Calibration Error.
+
+    For each class, bins predictions by the predicted probability for that class
+    and measures the gap between predicted probability and actual frequency.
+    Aggregates across all classes.
+
+    Args:
+        y: True class labels as integers of shape (N,).
+        probs: Probability matrix of shape (N, J).
+        n_bins: Number of probability bins per class (default 15).
+        balanced: If True, weight classes equally; otherwise weight by sample count.
+
+    Returns:
+        Dictionary containing:
+            - "ece": Aggregated Expected Calibration Error
+            - "mce": Maximum Calibration Error across all classes
+            - "per_class": List of per-class ECE/MCE metrics and bin tables
+
+    Examples:
+        >>> import numpy as np
+        >>> y = np.array([0, 0, 1, 1, 2, 2])
+        >>> probs = np.array([[0.8, 0.1, 0.1], [0.7, 0.2, 0.1],
+        ...                   [0.2, 0.6, 0.2], [0.1, 0.8, 0.1],
+        ...                   [0.1, 0.2, 0.7], [0.1, 0.1, 0.8]])
+        >>> result = classwise_ece(y, probs)
+        >>> print(f"Classwise ECE: {result['ece']:.4f}")
+    """
     y = np.asarray(y, dtype=np.int64)
     probs = np.asarray(probs, dtype=np.float64)
     N, J = probs.shape
@@ -308,6 +463,26 @@ def classwise_ece(
 
 
 def sharpness_metrics(probs: np.ndarray) -> dict[str, float]:
+    """Compute sharpness metrics for probability predictions.
+
+    Sharpness measures how confident (peaked) the predictions are, independent
+    of whether they are correct. Sharper predictions are more informative.
+
+    Args:
+        probs: Probability matrix of shape (N, J).
+
+    Returns:
+        Dictionary containing:
+            - "mean_entropy": Average entropy across predictions (lower = sharper)
+            - "mean_max_prob": Average of maximum probabilities (higher = sharper)
+            - "mean_margin": Average difference between top two probabilities
+
+    Examples:
+        >>> import numpy as np
+        >>> probs = np.array([[0.9, 0.05, 0.05], [0.5, 0.3, 0.2]])
+        >>> sharp = sharpness_metrics(probs)
+        >>> print(f"Mean max prob: {sharp['mean_max_prob']:.3f}")
+    """
     probs = np.asarray(probs, dtype=np.float64)
     ent = -np.sum(np.where(probs > 0, probs * np.log(probs), 0.0), axis=1)
     mx = probs.max(axis=1)
@@ -320,13 +495,126 @@ def sharpness_metrics(probs: np.ndarray) -> dict[str, float]:
     }
 
 
+# ---------- Variance & Informativeness ----------
+
+
+def column_variance(Q: np.ndarray) -> dict[str, Any]:
+    """Compute per-column variance of a probability matrix.
+
+    Useful for measuring how "spread out" the calibrated probabilities are
+    within each class. Lower variance may indicate a "flatter" solution.
+
+    Args:
+        Q: Probability matrix of shape (N, J).
+
+    Returns:
+        Dictionary containing:
+            - "per_column": List of variance values for each column
+            - "mean": Mean variance across columns
+            - "min": Minimum column variance
+            - "max": Maximum column variance
+
+    Examples:
+        >>> import numpy as np
+        >>> from rank_preserving_calibration import column_variance
+        >>> Q = np.array([[0.6, 0.3, 0.1], [0.4, 0.4, 0.2]])
+        >>> var = column_variance(Q)
+        >>> print(f"Mean column variance: {var['mean']:.4f}")
+    """
+    Q = np.asarray(Q, dtype=np.float64)
+    col_vars = np.var(Q, axis=0)
+    return {
+        "per_column": col_vars.tolist(),
+        "mean": float(np.mean(col_vars)),
+        "min": float(np.min(col_vars)),
+        "max": float(np.max(col_vars)),
+    }
+
+
+def informativeness_ratio(Q: np.ndarray, P: np.ndarray) -> dict[str, Any]:
+    """Compare variance of Q vs P to measure information preservation.
+
+    The informativeness ratio measures how much of the original probability
+    spread is preserved after calibration. A ratio close to 1 means the
+    calibration preserved the discriminative structure; a ratio near 0
+    indicates a "flat" solution with little discrimination between samples.
+
+    Args:
+        Q: Calibrated probability matrix of shape (N, J).
+        P: Original probability matrix of shape (N, J).
+
+    Returns:
+        Dictionary containing:
+            - "total_ratio": Var(Q) / Var(P)
+            - "per_column_ratio": Variance ratio for each column
+            - "mean_column_ratio": Mean of per-column ratios
+            - "interpretation": String describing the result
+
+    Examples:
+        >>> import numpy as np
+        >>> from rank_preserving_calibration import informativeness_ratio
+        >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
+        >>> Q = np.array([[0.5, 0.35, 0.15], [0.5, 0.35, 0.15]])  # Flat
+        >>> ratio = informativeness_ratio(Q, P)
+        >>> print(f"Total ratio: {ratio['total_ratio']:.3f}")
+    """
+    Q = np.asarray(Q, dtype=np.float64)
+    P = np.asarray(P, dtype=np.float64)
+
+    var_q = float(np.var(Q))
+    var_p = float(np.var(P))
+
+    if var_p > 1e-15:
+        total_ratio = var_q / var_p
+    else:
+        total_ratio = float("inf") if var_q > 0 else 1.0
+
+    # Per-column ratios
+    col_var_q = np.var(Q, axis=0)
+    col_var_p = np.var(P, axis=0)
+    per_col_ratios = []
+    for vq, vp in zip(col_var_q, col_var_p, strict=True):
+        if vp > 1e-15:
+            per_col_ratios.append(vq / vp)
+        else:
+            per_col_ratios.append(float("inf") if vq > 0 else 1.0)
+
+    mean_col_ratio = float(np.mean([r for r in per_col_ratios if np.isfinite(r)]))
+
+    # Interpretation
+    if total_ratio >= 0.8:
+        interpretation = (
+            "High informativeness: calibration preserved discrimination well."
+        )
+    elif total_ratio >= 0.5:
+        interpretation = "Moderate informativeness: some loss of discrimination."
+    elif total_ratio >= 0.2:
+        interpretation = "Low informativeness: significant flattening occurred."
+    else:
+        interpretation = "Very low informativeness: solution is nearly flat/uniform."
+
+    return {
+        "total_ratio": total_ratio,
+        "per_column_ratio": per_col_ratios,
+        "mean_column_ratio": mean_col_ratio,
+        "interpretation": interpretation,
+    }
+
+
 # ---------- Optional: AUC deltas (labels) ----------
 
 
 def _binary_auc(scores: np.ndarray, labels: np.ndarray) -> float:
-    """One-vs-rest AUC; ties -> 0.5 credit."""
+    """Compute one-vs-rest AUC using rank-based method.
+
+    Args:
+        scores: Predicted scores of shape (N,).
+        labels: Binary labels of shape (N,).
+
+    Returns:
+        AUC value, or NaN if only one class is present.
+    """
     order = np.argsort(scores, kind="mergesort")
-    scores[order]
     y = labels[order].astype(np.int64)
     n_pos = int(y.sum())
     n_neg = int(len(y) - n_pos)

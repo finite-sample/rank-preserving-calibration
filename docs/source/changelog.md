@@ -1,5 +1,42 @@
 # Changelog
 
+## Version 0.8.0 (2025-03-26)
+
+**New Calibration Algorithms:**
+* **KL-divergence calibration** (`calibrate_kl`): KL-based loss instead of Euclidean distance
+* **Soft KL calibration** (`calibrate_kl_soft`): λ-weighted rank penalty for KL geometry
+* **KL Pareto frontier** (`calibrate_kl_pareto`): Compute trade-off frontier for KL calibration
+* **Soft calibration** (`calibrate_soft`): Gradient descent with tunable constraint penalties
+* **Soft ADMM calibration** (`calibrate_soft_admm`): ADMM version with better convergence
+* **IPF calibration** (`calibrate_ipf`): Iterative Proportional Fitting (raking)
+* **Two-stage calibration** (`calibrate_two_stage`): IPF followed by isotonic projection
+
+**New Analysis Utilities:**
+* `flatness_metrics`: Measure solution informativeness and discrimination
+* `marginal_shift_metrics`: Quantify distribution shift between P and M
+* `flatness_bound`: Theoretical bound on expected flatness
+* `compare_calibration_methods`: Compare multiple calibration approaches
+
+**New KL Nearly-Isotonic Utilities:**
+* `project_near_kl_isotonic`: Multiplicative slack projection for KL geometry
+* `prox_kl_near_isotonic`: λ-penalty proximal operator for KL
+
+**Extended Metrics:**
+* `kl_divergence`: KL divergence between probability matrices
+* `sharpness_metrics`: Prediction confidence and entropy analysis
+* `column_variance`: Per-column variance of calibrated probabilities
+* `informativeness_ratio`: Compare Q vs P variance (measures flattening)
+
+**New Result Classes:**
+* `KLCalibrationResult`: Result container for KL calibration
+* `KLParetoResult`: Pareto frontier results
+* `SoftCalibrationResult`: Result with objective breakdown
+* `IPFResult`: IPF calibration results
+* `TwoStageResult`: Two-stage calibration results
+
+**Infrastructure:**
+* Python 3.12+ required (3.12, 3.13, 3.14 supported)
+
 ## Version 0.6.0 (2024-10-XX)
 
 **Breaking Changes:**

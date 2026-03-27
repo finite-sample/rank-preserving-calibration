@@ -15,18 +15,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Python 3.11 on all platforms
-          - os: ubuntu-latest
-            python-version: "3.11"
-          - os: windows-latest
-            python-version: "3.11"
-          - os: macos-latest
-            python-version: "3.11"
-          # Python 3.12 and 3.13 only on Linux
+          # Python 3.12 on all platforms
           - os: ubuntu-latest
             python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.12"
+          # Python 3.13 and 3.14 only on Linux
           - os: ubuntu-latest
             python-version: "3.13"
+          - os: ubuntu-latest
+            python-version: "3.14"
 
     steps:
     - uses: actions/checkout@v4
@@ -46,7 +46,7 @@ jobs:
       run: uv run pytest tests/ -v --cov=rank_preserving_calibration --cov-report=xml --cov-report=term
 
     - name: Upload coverage to Codecov
-      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
       uses: codecov/codecov-action@v4
       with:
         file: ./coverage.xml
@@ -64,7 +64,7 @@ jobs:
         version: "latest"
 
     - name: Set up Python
-      run: uv python install 3.11
+      run: uv python install 3.12
 
     - name: Install dependencies
       run: uv sync --group dev

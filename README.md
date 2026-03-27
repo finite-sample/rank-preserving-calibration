@@ -4,7 +4,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/rank-preserving-calibration.svg)](https://pypi.org/project/rank-preserving-calibration/)
 [![Documentation](https://img.shields.io/badge/docs-github.io-blue)](https://finite-sample.github.io/rank-preserving-calibration/)
 [![PyPI Downloads](https://static.pepy.tech/badge/rank-preserving-calibration)](https://pepy.tech/projects/rank-preserving-calibration)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Survey statisticians and machine learning practitioners often need to adjust the predicted class probabilities from a classifier so that they match known population totals (column marginals). Simple post-hoc methods that apply separate logit shifts or raking to each class can scramble the ranking of individuals within a class when there are three or more classes. This package implements a rank-preserving calibration procedure that projects probabilities onto the intersection of two convex sets:
