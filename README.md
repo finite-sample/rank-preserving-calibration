@@ -12,7 +12,13 @@ Survey statisticians and machine learning practitioners often need to adjust the
 1. **Row-simplex**: each row sums to one and all entries are non-negative.
 2. **Isotonic column marginals**: within each class, values are non-decreasing when instances are sorted by their original scores for that class, and the sum of each column equals a user-supplied target.
 
-The algorithm uses Dykstra's alternating projection method in Euclidean geometry. When the specified column totals are feasible, the procedure returns a matrix that preserves cross-person discrimination within each class, matches the desired totals, and remains a valid probability distribution for each instance. If no such matrix exists, the algorithm converges to the closest point (in L2 sense) satisfying both sets of constraints.
+The algorithm uses Dykstra's alternating projection method in Euclidean geometry. When the specified column totals are feasible, the procedure returns a matrix that preserves cross-person discrimination within each class, matches the desired totals, and remains a valid probability distribution for each instance. That claim is checked against an independent convex solver in the test suite rather than asserted.
+
+**Feasibility is exact, not approximate.** Every row sums to one, so the grand total is fixed at `N` and the targets must satisfy `sum(M) == N`. When they do, the intersection is *never* empty — the constant matrix `Q[i, j] = M[j] / N` satisfies all three constraint sets — so a failure is a conditioning or iteration-budget problem, never infeasibility. When they do not, no matrix satisfies both constraint sets and there is no "closest point satisfying both" to return: the solver warns, then raises `CalibrationError`. Rescale first:
+
+```python
+M = M * N / M.sum()
+```
 
 ### New: Nearly Isotonic Calibration
 

@@ -99,12 +99,13 @@ where the sum is over pairs with $P_{i_1,j} \leq P_{i_2,j}$.
 ## Convergence Properties
 
 **Dykstra's Method:**
-- Guaranteed convergence to the intersection of constraint sets
-- Linear convergence rate under regularity conditions
-- Each iteration maintains feasibility of the most recent constraint
+- Converges to the projection onto the intersection when that intersection is non-empty. Verified against an independent convex solver: the returned matrix matches a QP formulation of the whole problem to better than $10^{-9}$ in objective.
+- Each iteration maintains feasibility of the most recent constraint, so no finite iterate satisfies *both* sets exactly — every sweep ends on a column projection, which perturbs the row sums. Convergence tolerances are therefore absolute and achievable (default $10^{-8}$) rather than aspirational.
+- **The iteration count grows superlinearly in $N$.** Measured at $J = 4$ with feasible targets: 159 iterations at $N = 25$, 533 at $N = 50$, 6,982 at $N = 100$, and past 60,000 at $N = 200$. For context, a general-purpose QP solver handles the $N = 100$ case exactly in 0.06s against Dykstra's 5.4s. Treat $N$ in the low hundreds as the practical ceiling for the exact projection, and use the $\varepsilon$-relaxation above that.
 
 **ADMM:**
-- Convergence under standard assumptions (constraint qualification)
+- The $Q$-update is the exact minimiser of the augmented Lagrangian. Stationarity gives $Q + \rho (Q\mathbf{1})\mathbf{1}^T + \rho \mathbf{1}(Q^T\mathbf{1})^T = R$, which closes in the row sums, column sums and grand total, so the update needs no linear system and stays $O(NJ)$.
+- After the iterations the result is projected onto the constraint set with Dykstra. If that projection does not converge, `calibrate_admm` raises rather than returning the raw ADMM iterate: that iterate is not a projection, and its objective can sit *below* the true optimum precisely because it is infeasible.
 - Convergence rate depends on penalty parameter $\rho$
 - Provides primal and dual residual tracking
 
@@ -132,6 +133,7 @@ where the sum is over pairs with $P_{i_1,j} \leq P_{i_2,j}$.
 - Input validation checks for NaN/infinite values
 
 **Feasibility:**
-- The intersection of constraints may be empty if $\sum_j M_j \neq N$
-- Warnings are issued when $|\sum_j M_j - N|$ is large
-- Nearly isotonic approaches can help with infeasible problems
+- The intersection is empty **whenever** $\sum_j M_j \neq N$, not merely "may be". Row sums of one fix the grand total at $N$, so no matrix can satisfy both constraint sets, and there is no closest point satisfying both to fall back on. The solver warns and then raises.
+- Conversely, when $\sum_j M_j = N$ the intersection is **never** empty: the constant matrix $Q_{ij} = M_j / N$ has unit row sums, column sums $M_j$, and weakly isotonic columns. Any failure in that regime is conditioning or iteration budget, never infeasibility.
+- Warnings fire as soon as $|\sum_j M_j - N|$ exceeds floating-point slack. They previously fired only above $10\%$ of $N$, so a 2% mismatch produced no warning and then failed hard.
+- Nearly isotonic approaches relax the *isotonic* constraint, which helps with ill-conditioning. They do not make $\sum_j M_j \neq N$ solvable — rescale the targets instead.

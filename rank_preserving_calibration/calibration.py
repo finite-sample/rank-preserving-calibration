@@ -185,16 +185,29 @@ def _validate_inputs(
         case x if np.any(x < 0):
             raise CalibrationError("M must contain non-negative values")
 
-    # Check basic feasibility (soft warning)
+    # Feasibility is exact, not approximate: rows summing to 1 force the grand
+    # total to N, so sum(M) != N makes the intersection *empty* -- there is no
+    # nearest feasible point to return, and the solver will fail. Conversely,
+    # when sum(M) == N the constant matrix Q[i, j] = M[j]/N always satisfies
+    # every constraint, so the intersection is never empty and any failure is
+    # conditioning rather than infeasibility.
+    #
+    # The warning therefore fires at the point where the problem stops being
+    # solvable, scaled only by floating-point slack. It used to fire at
+    # `feasibility_tol * N` (10% of N by default), so a 2% mismatch produced no
+    # warning at all and then raised.
     M_sum = float(M.sum())
-    match abs(M_sum - N):
-        case diff if diff > feasibility_tol * N:
-            warnings.warn(
-                f"Sum of M ({M_sum:.3f}) differs from N ({N}) by "
-                f"{diff:.3f}. Problem may be infeasible.",
-                UserWarning,
-                stacklevel=2,
-            )
+    difference = abs(M_sum - N)
+    slack = max(1e-9 * max(N, 1.0), np.finfo(float).eps * 100.0 * max(M_sum, 1.0))
+    if difference > slack:
+        warnings.warn(
+            f"Sum of M ({M_sum:.6g}) must equal N ({N}) for a feasible problem; "
+            f"it differs by {difference:.3g}. Rows summing to 1 force the grand "
+            f"total to N, so no matrix satisfies both constraint sets and "
+            f"calibration will fail. Rescale with M = M * N / M.sum().",
+            UserWarning,
+            stacklevel=2,
+        )
 
     # Validate other parameters using match statements
     match max_iters:
@@ -441,6 +454,53 @@ def _project_column_isotonic_sum(
 # ---------------------------------------------------------------------
 
 
+def is_feasible(
+    Q: np.ndarray,
+    M: np.ndarray,
+    *,
+    row_atol: float = 1e-10,
+    col_atol: float = 1e-10,
+) -> bool:
+    """Check that ``Q`` has unit row sums and column sums equal to ``M``.
+
+    The tolerances are **absolute**. This function exists because that was not
+    always true: every feasibility check in this module used to call
+    ``np.allclose(x, target, atol=...)`` without passing ``rtol``, and
+    ``np.allclose`` keeps its default ``rtol=1e-5``. The effective bound was
+    ``atol + 1e-5 * |target|``, so a stated ``atol=1e-12`` on row sums behaved as
+    ``1e-5``, and the column check -- measured against ``M_j``, which grows with
+    ``N`` -- became *looser* as the problem got larger. Convergence was therefore
+    reported least reliably exactly where it mattered most.
+
+    Args:
+        Q: Candidate matrix of shape (N, J).
+        M: Target column sums of shape (J,).
+        row_atol: Absolute tolerance on ``|row_sum - 1|``.
+        col_atol: Absolute tolerance on ``|col_sum - M_j|``.
+
+    Returns:
+        True if every row sum and every column sum is within tolerance.
+
+    Examples:
+        >>> import numpy as np
+        >>> Q = np.full((4, 2), 0.5)
+        >>> is_feasible(Q, np.array([2.0, 2.0]))
+        True
+
+        A row error of 1e-6 is a real violation, and is reported as one:
+
+        >>> Q_bad = Q.copy()
+        >>> Q_bad[0, 0] += 1e-6
+        >>> is_feasible(Q_bad, np.array([2.0, 2.0]))
+        False
+    """
+    rows_ok = bool(np.all(np.abs(Q.sum(axis=1) - 1.0) <= row_atol))
+    cols_ok = bool(
+        np.all(np.abs(Q.sum(axis=0) - np.asarray(M, dtype=float)) <= col_atol)
+    )
+    return rows_ok and cols_ok
+
+
 def _compute_rank_violation(Q: np.ndarray, P: np.ndarray) -> float:
     """Compute maximum rank violation across all columns (w.r.t. original scores)."""
     max_violation = 0.0
@@ -477,8 +537,8 @@ def _polish_to_intersection(
     ties: str = "stable",
     score_sorted: list[np.ndarray | None] | None = None,
     max_iters: int = 200,
-    row_atol: float = 1e-12,
-    col_atol: float = 1e-10,
+    row_atol: float = 1e-8,
+    col_atol: float = 1e-8,
 ) -> np.ndarray:
     """Small alternating-projection polish to hit constraints to machine tolerance."""
     _, J = Q.shape
@@ -496,9 +556,7 @@ def _polish_to_intersection(
                 ties=ties,
                 score_sorted=score_sorted[j] if score_sorted else None,
             )
-        if np.allclose(Q.sum(axis=1), 1.0, atol=row_atol) and np.allclose(
-            Q.sum(axis=0), M, atol=col_atol
-        ):
+        if is_feasible(Q, M, row_atol=row_atol, col_atol=col_atol):
             break
     return Q
 
@@ -522,6 +580,8 @@ def calibrate_dykstra(
     nearly: dict | None = None,
     ties: str = "stable",
     use_jit: bool = True,
+    row_atol: float = 1e-8,
+    col_atol: float = 1e-8,
 ) -> CalibrationResult:
     """Calibrate using Dykstra's alternating projections.
 
@@ -551,6 +611,15 @@ def calibrate_dykstra(
         ties: How to handle tied scores. "stable" preserves input order, "group" pools
             equal-score instances.
         use_jit: If True and numba is available, uses JIT-compiled functions for speed.
+        row_atol: Absolute tolerance on |row sum - 1| for declaring convergence.
+            Absolute, not relative -- see `is_feasible`. The 1e-8 default is what
+            alternating projections can actually reach: each sweep ends on a
+            column projection, which perturbs the row sums, so no finite iterate
+            satisfies both constraint sets exactly. It is still three orders
+            tighter than the 1e-5 the previous `np.allclose` check allowed.
+        col_atol: Absolute tolerance on |column sum - M_j| for declaring
+            convergence. Being absolute, it does not loosen as M_j grows with N,
+            which the previous check did.
 
     Returns:
         CalibrationResult object containing:
@@ -645,10 +714,9 @@ def calibrate_dykstra(
             float(change_abs / norm_Q_prev) if norm_Q_prev > 0 else float(change_abs)
         )
 
-        row_ok = np.allclose(Q.sum(axis=1), 1.0, atol=1e-12)
-        col_ok = np.allclose(Q.sum(axis=0), M, atol=1e-10)
+        feasible = is_feasible(Q, M, row_atol=row_atol, col_atol=col_atol)
 
-        if final_change < tol and row_ok and col_ok:
+        if final_change < tol and feasible:
             converged = True
             logger.info(f"Dykstra converged at iteration {iteration}")
             break
@@ -673,10 +741,7 @@ def calibrate_dykstra(
             break
 
     # If not strictly feasible, polish to the intersection
-    if not (
-        np.allclose(Q.sum(axis=1), 1.0, atol=1e-12)
-        and np.allclose(Q.sum(axis=0), M, atol=1e-10)
-    ):
+    if not is_feasible(Q, M, row_atol=row_atol, col_atol=col_atol):
         Q = _polish_to_intersection(
             Q,
             M,
@@ -688,9 +753,7 @@ def calibrate_dykstra(
         )
 
         # If now feasible, count as converged for reporting
-        if np.allclose(Q.sum(axis=1), 1.0, atol=1e-12) and np.allclose(
-            Q.sum(axis=0), M, atol=1e-10
-        ):
+        if is_feasible(Q, M, row_atol=row_atol, col_atol=col_atol):
             converged = True
 
     # Diagnostics
@@ -848,12 +911,27 @@ def calibrate_admm(
     for iteration in range(max_iters):
         Q_prev = Q.copy()
 
-        # Q-update: quadratic + linear equality terms
-        row_correction = (Z1 - lambda1 / rho).reshape(-1, 1)
-        col_correction = (Z2 - lambda2 / rho).reshape(1, -1)
-        Q_unconstrained = (P + rho * (row_correction + col_correction)) / (
-            1.0 + 2.0 * rho
-        )
+        # Q-update: exact minimiser of
+        #     0.5||Q - P||_F^2 + (rho/2)||Q 1_J - a||^2 + (rho/2)||Q^T 1_N - b||^2
+        # with a = Z1 - lambda1/rho and b = Z2 - lambda2/rho.
+        #
+        # The previous version computed (P + rho*(a[:, None] + b[None, :])) /
+        # (1 + 2*rho), which pulls every ELEMENT toward the row target and the
+        # column target. But a[i] targets the row *sum* and b[j] the column
+        # *sum*, so that update drove each row toward J*(1 + M_j)/2 rather than
+        # 1. It could not satisfy its own constraints for any rho, and
+        # calibrate_admm failed on problems as small as N=25.
+        #
+        # Stationarity gives Q + rho (Q 1)1^T + rho 1(Q^T 1)^T = R, which closes
+        # in the row sums, column sums and grand total, so the exact solution
+        # needs no linear system and stays O(NJ).
+        a_vec = Z1 - lambda1 / rho
+        b_vec = Z2 - lambda2 / rho
+        R = P + rho * a_vec.reshape(-1, 1) + rho * b_vec.reshape(1, -1)
+        s_tot = float(R.sum()) / (1.0 + rho * J + rho * N)
+        r_vec = (R.sum(axis=1) - rho * s_tot) / (1.0 + rho * J)
+        c_vec = (R.sum(axis=0) - rho * s_tot) / (1.0 + rho * N)
+        Q_unconstrained = R - rho * r_vec.reshape(-1, 1) - rho * c_vec.reshape(1, -1)
 
         # Rank-preserving + nonnegativity
         if lam_pen is not None:
@@ -949,10 +1027,14 @@ def calibrate_admm(
 
     # Snap to the exact projection (guarantees distance optimality over feasible set)
     try:
+        # The snap is what makes the returned matrix an actual projection, so it
+        # gets a budget proportional to the problem rather than a flat 1500 --
+        # Dykstra's iteration count grows superlinearly in N, and a fixed budget
+        # silently became inadequate somewhere above N=25.
         snap = calibrate_dykstra(
             P,
             M,
-            max_iters=1500,
+            max_iters=max(1500, 200 * N),
             tol=1e-10,
             rtol=0.0,
             verbose=False,
@@ -960,13 +1042,19 @@ def calibrate_admm(
             ties="stable",
         )
         Q = snap.Q
-    except CalibrationError:
-        if verbose:
-            warnings.warn(
-                "Final snap-to-projection failed; using ADMM solution as-is",
-                UserWarning,
-                stacklevel=2,
-            )
+    except CalibrationError as exc:
+        # Never fall back silently. The ADMM iterate is not a projection onto the
+        # constraint set: its objective can sit *below* the true optimum precisely
+        # because it is infeasible. Returning it while reporting converged=True
+        # hands back a matrix that violates the guarantee this package exists for
+        # -- measured at 27 rank violations on a 25-row problem -- with no signal
+        # at the default verbosity.
+        raise CalibrationError(
+            "ADMM converged but the final projection onto the constraint set did "
+            f"not: {exc}. The raw ADMM iterate is not rank-preserving and is not "
+            "returned. Use calibrate_dykstra directly, raise max_iters, or relax "
+            "the isotonic constraint with nearly={'mode': 'epsilon', 'eps': 0.01}."
+        ) from exc
 
     # Diagnostics
     row_sums = Q.sum(axis=1)

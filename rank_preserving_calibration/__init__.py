@@ -47,6 +47,7 @@ from .calibration import (
     CalibrationResult,
     calibrate_admm,
     calibrate_dykstra,
+    is_feasible,
 )
 
 # Public API: KL divergence calibration
@@ -137,6 +138,7 @@ __all__ = [
     "flatness_bound",
     "flatness_metrics",
     "informativeness_ratio",
+    "is_feasible",
     "isotonic_metrics",
     "kl_divergence",
     "marginal_shift_metrics",
