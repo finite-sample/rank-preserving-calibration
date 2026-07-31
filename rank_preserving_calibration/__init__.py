@@ -41,6 +41,9 @@ from .analysis import (
     flatness_metrics,
     marginal_shift_metrics,
 )
+
+# Public API: recommended entry point and the exact QP solver
+from .api import calibrate
 from .calibration import (
     ADMMResult,
     CalibrationError,
@@ -92,6 +95,7 @@ from .nearly import (
     prox_near_isotonic_with_sum,
 )
 from .ovr_isotonic import calibrate_ovr_isotonic
+from .qp import calibrate_qp
 
 # Public API: soft calibration with tunable trade-offs
 from .soft_calibration import (
@@ -120,6 +124,7 @@ __all__ = [
     "TwoStageResult",
     "auc_deltas",
     "brier",
+    "calibrate",
     "calibrate_admm",
     "calibrate_dykstra",
     "calibrate_ipf",
@@ -127,6 +132,7 @@ __all__ = [
     "calibrate_kl_pareto",
     "calibrate_kl_soft",
     "calibrate_ovr_isotonic",
+    "calibrate_qp",
     "calibrate_soft",
     "calibrate_soft_admm",
     "calibrate_two_stage",

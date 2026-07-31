@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "rank_preserving_calibration"
-version = "0.8.0"
+version = "0.9.0"
 description = "Rank-preserving calibration of multiclass probabilities via Dykstra's projections and ADMM."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -24,6 +24,8 @@ classifiers = [
 ]
 dependencies = [
   "numpy>=1.20",
+  "scipy>=1.10",
+  "clarabel>=0.9",
 ]
 
 [project.optional-dependencies]
@@ -112,6 +114,11 @@ require-return-section-when-returning-nothing = false
 arg-type-hints-in-signature = true
 check-return-types = true
 check-yield-types = true
+
+[tool.pytest.ini_options]
+markers = [
+  "slow: long-running checks, chiefly the scaling regression guard",
+]
 
 [tool.pyright]
 include = ["rank_preserving_calibration"]

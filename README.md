@@ -17,7 +17,11 @@ The algorithm uses Dykstra's alternating projection method in Euclidean geometry
 **Feasibility is exact, not approximate.** Every row sums to one, so the grand total is fixed at `N` and the targets must satisfy `sum(M) == N`. When they do, the intersection is *never* empty — the constant matrix `Q[i, j] = M[j] / N` satisfies all three constraint sets — so a failure is a conditioning or iteration-budget problem, never infeasibility. When they do not, no matrix satisfies both constraint sets and there is no "closest point satisfying both" to return: the solver warns, then raises `CalibrationError`. Rescale first:
 
 ```python
-M = M * N / M.sum()
+import numpy as np
+
+N = 3
+M = np.array([1.2, 0.9, 1.1])   # any targets
+M = M * N / M.sum()             # now sums to N exactly
 ```
 
 ### New: Nearly Isotonic Calibration
@@ -31,19 +35,65 @@ These relaxed constraints can provide better balance between rank preservation a
 
 An **ADMM optimization** implementation is also provided as an alternative solver that minimizes `||Q - P||²` subject to the same constraints.
 
+## Which solver?
+
+`calibrate()` picks for you, and the default is right in every case measured. The three
+are mathematically equivalent — they solve the same convex problem, and the test suite
+asserts they agree — so the choice is practical:
+
+| method | how | when |
+|---|---|---|
+| `"qp"` (default) | sparse quadratic program, interior point | always |
+| `"dykstra"` | alternating projections, numpy only | reference implementation; useful if you cannot take the solver dependency |
+| `"admm"` | augmented Lagrangian, then projection | when you want primal/dual residual traces |
+
+The default is not a close call. Measured at `J=4` on feasible targets:
+
+| N | `dykstra` | `qp` |
+|---|---|---|
+| 25 | 0.03 s | 0.002 s |
+| 50 | 9.6 s | 0.004 s |
+| 100 | 10.5 s | 0.01 s |
+| 400 | does not converge in 60,000 iterations | 0.12 s |
+| 1600 | — | 1.4 s |
+| 6400 | — | 50 s |
+
+The reason is the algorithm class rather than the problem: the two constraint sets meet
+at a shallow angle, which is exactly where first-order methods crawl and where an
+interior-point method is unaffected. A sparse QP alone is not enough — OSQP, also
+first-order, is *worse* than Dykstra here, returning 592 rank violations at `N=400`
+while reporting that it ran.
+
+**Above roughly `N = 6400` the exact solve becomes expensive again**, since
+interior-point factorisation cost grows steeply. Relax the constraint rather than wait:
+
+```python
+import numpy as np
+from rank_preserving_calibration import calibrate
+
+P = np.array([[0.6, 0.3, 0.1], [0.2, 0.5, 0.3], [0.1, 0.2, 0.7]])
+M = np.array([1.0, 1.0, 1.0])
+
+result = calibrate(P, M, nearly={"mode": "epsilon", "eps": 0.05})
+```
+
+which permits adjacent within-class decreases of at most `eps` and is handled exactly,
+by lowering the isotonic bound rather than by penalising violations.
+
 ## Installation
 
 ```bash
 pip install rank-preserving-calibration
 
-# For performance optimizations (2-10x speedup on large matrices)
+# For JIT acceleration of the numpy-only Dykstra path
 pip install rank-preserving-calibration[performance]
 ```
 
-The only runtime dependency is `numpy`. Optional extras:
+Runtime dependencies are `numpy`, `scipy` and `clarabel` (Apache-2.0, ~2.5 MB). Optional
+extras:
 - `[performance]`: Adds `numba` (JIT compilation)
 - `[docs]`: Documentation building dependencies
-- Examples require `scipy` and `matplotlib`
+- Examples require `matplotlib`
 
 ## Usage
 
@@ -51,7 +101,7 @@ The only runtime dependency is `numpy`. Optional extras:
 
 ```python
 import numpy as np
-from rank_preserving_calibration import calibrate_dykstra
+from rank_preserving_calibration import calibrate
 
 P = np.array([
     [0.6, 0.3, 0.1],
@@ -63,7 +113,7 @@ P = np.array([
 # number of rows (3 in this example) for perfect feasibility.
 M = np.array([1.0, 1.0, 1.0])
 
-result = calibrate_dykstra(P, M)
+result = calibrate(P, M)
 
 print("Adjusted probabilities:\n", result.Q)
 print("Converged:", result.converged)
@@ -76,13 +126,14 @@ print("Rank violations:", result.max_rank_violation)
 ### Nearly Isotonic Usage
 
 ```python
-# Epsilon-slack: Allow small rank violations (recommended)
-nearly_params = {"mode": "epsilon", "eps": 0.05}
-result = calibrate_dykstra(P, M, nearly=nearly_params)
+from rank_preserving_calibration import calibrate
 
-# Lambda-penalty: Soft isotonic constraint (experimental)
-nearly_params = {"mode": "lambda", "lam": 1.0}
-result = calibrate_admm(P, M, nearly=nearly_params)
+# Epsilon-slack: allow small rank violations (recommended above N ~ 6400)
+result = calibrate(P, M, nearly={"mode": "epsilon", "eps": 0.05})
+
+# Lambda-penalty: soft isotonic constraint, ADMM only (it changes the
+# objective rather than the constraint set, so it is not a projection)
+result = calibrate(P, M, method="admm", nearly={"mode": "lambda", "lam": 1.0})
 ```
 
 The returned `CalibrationResult` contains the calibrated matrix `Q` with the same shape as `P`. Each row of `Q` sums to one, the column sums match `M`, and within each column the entries are sorted in non-decreasing order according to the order implied by the original `P`.
@@ -90,14 +141,16 @@ The returned `CalibrationResult` contains the calibrated matrix `Q` with the sam
 ### Performance Features
 
 ```python
-# Disable JIT compilation if needed (enabled by default when numba installed)
-result = calibrate_dykstra(P, M, use_jit=False)
+from rank_preserving_calibration import calibrate
 
-# Both features work together
-result = calibrate_dykstra(
+# JIT acceleration applies to the numpy-only Dykstra path, not the QP solver.
+result = calibrate(P, M, method="dykstra", use_jit=False)
+
+result = calibrate(
     P, M,
+    method="dykstra",
     max_iters=5000,
-    use_jit=True,       # 2-10x speedup
+    use_jit=True,       # 2-10x speedup on the projection path
 )
 ```
 
@@ -129,7 +182,11 @@ print(f"Violation mass: {isotonic['total_violation_mass']}")
 ### Calibration Quality Assessment
 
 ```python
+import numpy as np
 from rank_preserving_calibration import distance_metrics, nll, brier
+
+# True class labels for the three rows above, if you have them.
+y_true = np.array([0, 1, 2])
 
 # Measure calibration changes
 distances = distance_metrics(result.Q, P)
