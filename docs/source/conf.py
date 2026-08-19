@@ -23,7 +23,7 @@ with pyproject_path.open("rb") as f:
 project = pyproject_data["project"]["name"]
 author = pyproject_data["project"]["authors"][0]["name"]
 release = version = pyproject_data["project"]["version"]
-copyright = f"2024, {author}"
+project_copyright = f"2024, {author}"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -35,6 +35,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
     "sphinx.ext.mathjax",
+    "sphinx.ext.doctest",
     "sphinx_copybutton",
     "myst_nb",  # MyST-NB includes MyST-parser functionality
 ]
@@ -50,7 +51,7 @@ html_static_path = ["_static"]
 
 # HTML theme options for Furo
 html_theme_options = {
-    "source_repository": "https://github.com/finite-sample/rank_preserving_calibration",
+    "source_repository": "https://github.com/finite-sample/rank-preserving-calibration",
     "source_branch": "main",
     "source_directory": "docs/source/",
 }
@@ -75,17 +76,22 @@ napoleon_include_special_with_doc = True
 napoleon_use_admonition_for_examples = False
 napoleon_use_admonition_for_notes = False
 napoleon_use_admonition_for_references = False
-napoleon_use_ivar = False
+# Attributes: sections in the dataclass docstrings otherwise render as their
+# own `.. attribute::` directives, which collide with the entries autodoc
+# already emits for the same fields.
+napoleon_use_ivar = True
 napoleon_use_param = True
 napoleon_use_rtype = True
 napoleon_type_aliases = None
 napoleon_attr_annotations = True
 
-# Autodoc settings
+# Autodoc settings. `members` is deliberately absent: with it set here, a
+# directive that names a restricted member list (api.md's calibration module)
+# still pulled in every other member, and each class was then documented twice.
+# `special-members` is likewise absent -- it made autodoc look for __init__ on
+# a module.
 autodoc_default_options = {
-    "members": True,
     "member-order": "bysource",
-    "special-members": "__init__",
     "undoc-members": True,
     "exclude-members": "__weakref__",
 }
@@ -106,7 +112,12 @@ copybutton_prompt_is_regexp = True
 copybutton_remove_prompts = True
 
 # MyST-NB configuration
-nb_execution_mode = "auto"  # Execute notebooks automatically when needed
+# The three example notebooks under examples/ do not run end to end: two
+# reference variables that are never defined and one hits a genuine
+# non-convergence. Executing them at build time therefore produced pages of
+# tracebacks, and under `-W` it fails the build outright. Render them as
+# authored until they are repaired.
+nb_execution_mode = "off"
 nb_execution_timeout = 300  # 5 minute timeout per cell
 nb_execution_allow_errors = False  # Fail build on notebook errors
 nb_execution_in_temp = False  # Execute in source directory

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["uv_build>=0.9.13,<0.10.0"]
+requires = ["uv_build>=0.12.5,<0.13"]
 build-backend = "uv_build"
 
 [project]
@@ -7,6 +7,8 @@ name = "rank_preserving_calibration"
 version = "0.9.0"
 description = "Rank-preserving calibration of multiclass probabilities via Dykstra's projections and ADMM."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [
   { name = "Gaurav Sood", email = "contact@gsood.com" },
@@ -15,7 +17,6 @@ keywords = ["calibration", "machine learning", "multiclass", "isotonic", "dykstr
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -29,69 +30,98 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-docs = [
-    "sphinx>=7.0",
-    "furo>=2024.1.29",
-    "sphinx-autodoc-typehints>=1.25",
-    "sphinx-copybutton>=0.5",
-    "myst-nb>=1.0",
-    "jupyter",
-    "ipykernel>=6.0",
-    "scikit-learn>=1.0",
-    "matplotlib>=3.0",
-    "seaborn>=0.11",
-    "plotly>=5.0",
-]
 performance = [
     "numba>=0.56",
 ]
 
 [project.urls]
-Homepage = "https://github.com/finite-sample/rank_preserving_calibration"
-Source = "https://github.com/finite-sample/rank_preserving_calibration"
-Issues = "https://github.com/finite-sample/rank_preserving_calibration/issues"
-Documentation = "https://finite-sample.github.io/rank_preserving_calibration/"
+Homepage = "https://github.com/finite-sample/rank-preserving-calibration"
+Source = "https://github.com/finite-sample/rank-preserving-calibration"
+Issues = "https://github.com/finite-sample/rank-preserving-calibration/issues"
+Documentation = "https://finite-sample.github.io/rank-preserving-calibration/"
 
 [tool.uv.build-backend]
 module-name = "rank_preserving_calibration"
 module-root = ""
 
 [dependency-groups]
-dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff==0.14.6", "pre-commit>=3.0", "numba>=0.56", "pydoclint>=0.3.0", "pyright>=1.1.0"]
-test = ["pytest>=7.0", "pytest-cov>=4.0", "hypothesis>=6.0"]
+test = [
+    "pytest>=8",
+    "pytest-cov>=6",
+    "hypothesis>=6.0",
+    # The strongest tests check the solvers against an independent convex
+    # solver. Without cvxpy installed they skip silently, which is how the
+    # cross-checks in test_qp_solver.py and test_audit_regressions.py were
+    # never actually running in CI.
+    "cvxpy>=1.5",
+]
+dev = [
+    { include-group = "test" },
+    "ruff==0.14.6",
+    "pre-commit>=3.0",
+    "numba>=0.56",
+    "pydoclint>=0.3.0",
+    "pyright>=1.1.0",
+]
 examples = ["scipy>=1.0", "matplotlib>=3.0", "jupyter", "seaborn>=0.11", "scikit-learn>=1.0", "plotly>=5.0", "pandas>=1.5"]
+# myst-nb executes the notebooks under docs/source/examples during the build, so
+# the docs group carries their runtime imports (sklearn, matplotlib, seaborn,
+# plotly) as well as the Sphinx toolchain.
+docs = [
+    "sphinx>=8",
+    "furo",
+    "myst-nb>=1.0",
+    "sphinx-autodoc-typehints>=1.25",
+    "sphinx-copybutton",
+    "jupyter",
+    "ipykernel>=6.0",
+    "scikit-learn>=1.0",
+    "matplotlib>=3.0",
+    "seaborn>=0.11",
+    "plotly>=5.0",
+    "py-canon @ git+https://github.com/gojiplus/py-canon@v1",
+]
 
 [tool.ruff]
-target-version = "py312"
 line-length = 88
+target-version = "py312"
 exclude = ["**/.*", "build/", "dist/", "venv/", ".venv/", "docs/source/examples/*.ipynb", "examples/", "ms/"]
 
 [tool.ruff.lint]
-extend-select = [
-    "E",      # pycodestyle errors
-    "W",      # pycodestyle warnings
-    "F",      # pyflakes
-    "I",      # isort
-    "B",      # flake8-bugbear
-    "C4",     # flake8-comprehensions
-    "UP",     # pyupgrade
-    "RUF",    # Ruff-specific rules
+external = ["DOC"]
+select = [
+    "E", "W", "F", "I", "B", "C4", "UP", "N", "D", "S", "SIM", "T20", "PT", "RUF",
+    "PTH", "RET", "PIE", "FURB", "PERF", "DTZ", "LOG", "G", "TC", "FLY",
+    "RSE", "SLOT", "FA", "A", "EXE", "ICN", "PGH", "PLE", "ARG", "SLF",
 ]
+# D203/D213: the google convention the fleet standard picks. W191/D206/D300:
+# ruff's own docs list these as always incompatible with `ruff format`, which
+# the standard also runs.
 ignore = [
-    "E501",   # line too long, handled by formatter
-    "B008",   # do not perform function calls in argument defaults
-    "C901",   # too complex
-    "B007",   # loop variable not used in body (used after loop for iteration count)
+    "D203", "D213", "W191", "D206", "D300",
+    # N803/N806: the package is a linear-algebra library and its public
+    # signatures are the paper's notation -- P the N x J probability matrix, M
+    # the target column sums, Q the calibrated result, R and A the KL reference
+    # and anchor. Renaming them to `p`/`m`/`q` would break the API and make the
+    # code unreadable against the derivations it implements.
+    "N803", "N806",
 ]
-# Allow specific Greek letters used in mathematical notation
+# Greek letters that carry their mathematical meaning here: rho is the ADMM
+# penalty parameter, lambda the soft-constraint weight.
 allowed-confusables = ["ρ", "λ"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# N802: test names name the matrix they exercise (test_invalid_P_shape).
+"tests/**" = ["S101", "D", "ARG", "SLF", "N802"]
+"docs/**" = ["D"]
+"rank_preserving_calibration/metrics.py" = ["E702", "RUF034"]  # Allow compact coding style with semicolons in metrics
+"docs/source/examples/*.ipynb" = ["E402", "B007", "F821"]  # Allow notebook-style imports and unused loop vars
 
 [tool.ruff.lint.isort]
 known-first-party = ["rank_preserving_calibration"]
-
-[tool.ruff.lint.per-file-ignores]
-"rank_preserving_calibration/metrics.py" = ["E702", "RUF034"]  # Allow compact coding style with semicolons in metrics
-"docs/source/examples/*.ipynb" = ["E402", "B007", "F821"]  # Allow notebook-style imports and unused loop vars
 
 [tool.deptry]
 # Exclude examples and virtual environment directories from dependency analysis
@@ -105,15 +135,27 @@ known_first_party = ["rank_preserving_calibration"]
 # Documentation dependencies are not imported in code but used for building docs
 DEP002 = ["sphinx", "furo", "sphinx-autodoc-typehints", "sphinx-copybutton", "myst-parser", "nbsphinx", "jupyter", "ipykernel", "scikit-learn", "matplotlib", "seaborn", "plotly", "pandas"]
 # Test dependencies used in tests directory
-DEP004 = ["pytest", "hypothesis", "pytest-cov"]
+DEP004 = ["pytest", "hypothesis", "pytest-cov", "cvxpy"]
+
+# "fro" is numpy's Frobenius-norm argument (np.linalg.norm(x, "fro")).
+[tool.codespell]
+ignore-words-list = "fro"
 
 [tool.pydoclint]
 style = "google"
-exclude = [".venv", "venv", "env", ".git", "docs", "_build", "dist", ".*\\.egg-info", "tests"]
+arg-type-hints-in-docstring = false
+check-return-types = false
+check-class-attributes = false
+allow-init-docstring = true
+exclude = '\.venv|tests|docs'
 require-return-section-when-returning-nothing = false
 arg-type-hints-in-signature = true
-check-return-types = true
 check-yield-types = true
+
+# The CI runs a bare `pytest --cov`; without this it would also measure tests/,
+# which is always near 100% and hides the package's real number.
+[tool.coverage.run]
+source = ["rank_preserving_calibration"]
 
 [tool.pytest.ini_options]
 markers = [
@@ -122,11 +164,12 @@ markers = [
 
 [tool.pyright]
 include = ["rank_preserving_calibration"]
+typeCheckingMode = "standard"
 exclude = ["**/__pycache__", ".venv", "venv", "env", ".git", "docs", "_build", "dist", ".*\\.egg-info"]
-typeCheckingMode = "basic"
 reportMissingImports = true
 reportMissingTypeStubs = false
 reportUnusedImport = true
 reportUnusedFunction = false
 reportUnusedVariable = true
 pythonVersion = "3.12"
+

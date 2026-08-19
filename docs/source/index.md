@@ -1,6 +1,6 @@
 # Rank-Preserving Calibration Documentation
 
-[![Python application](https://github.com/finite-sample/rank_preserving_calibration/actions/workflows/ci.yml/badge.svg)](https://github.com/finite-sample/rank_preserving_calibration/actions/workflows/ci.yml)
+[![Python application](https://github.com/finite-sample/rank-preserving-calibration/actions/workflows/ci.yml/badge.svg)](https://github.com/finite-sample/rank-preserving-calibration/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/rank_preserving_calibration.svg)](https://pypi.org/project/rank_preserving_calibration/)
 [![Python versions](https://img.shields.io/pypi/pyversions/rank_preserving_calibration.svg)](https://pypi.org/project/rank_preserving_calibration/)
 

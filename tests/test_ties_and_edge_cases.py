@@ -166,7 +166,8 @@ class TestTiesHandling:
                 result = calibrate_admm(P, M, max_iters=500, tol=1e-8)
                 results.append(result.Q)
             except CalibrationError:
-                # With strict tolerance and limited iterations, convergence failure is acceptable
+                # With a strict tolerance and limited iterations, convergence
+                # failure is acceptable.
                 pass
 
         # All runs that converged should give identical results

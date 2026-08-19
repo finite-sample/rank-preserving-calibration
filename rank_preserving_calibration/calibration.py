@@ -1,5 +1,4 @@
-"""
-Robust rank-preserving multiclass probability calibration.
+"""Robust rank-preserving multiclass probability calibration.
 
 This module provides numerically stable implementations of rank-preserving
 calibration algorithms including Dykstra's alternating projections and ADMM.
@@ -91,28 +90,18 @@ class CalibrationResult:
 @dataclass(slots=True)
 class ADMMResult:
     """Result from ADMM optimization.
-    Attributes
-    ----------
-    Q : np.ndarray
-        Calibrated probability matrix.
-    converged : bool
-        Whether ADMM converged.
-    iterations : int
-        Number of iterations performed.
-    objective_values : list[float]
-        Objective function values over iterations.
-    primal_residuals : list[float]
-        Primal residual norms over iterations.
-    dual_residuals : list[float]
-        Dual residual norms over iterations.
-    max_row_error : float
-        Maximum row sum error.
-    max_col_error : float
-        Maximum column sum error.
-    max_rank_violation : float
-        Maximum rank violation.
-    final_change : float
-        Final relative change between iterations.
+
+    Attributes:
+        Q: Calibrated probability matrix.
+        converged: Whether ADMM converged.
+        iterations: Number of iterations performed.
+        objective_values: Objective function values over iterations.
+        primal_residuals: Primal residual norms over iterations.
+        dual_residuals: Dual residual norms over iterations.
+        max_row_error: Maximum row sum error.
+        max_col_error: Maximum column sum error.
+        max_rank_violation: Maximum rank violation.
+        final_change: Final relative change between iterations.
     """
 
     Q: np.ndarray
@@ -292,8 +281,8 @@ def _isotonic_regression(
     ties: str = "stable",
     weights: np.ndarray | None = None,
 ) -> np.ndarray:
-    """
-    Isotonic regression (nondecreasing) via stack-based Pool Adjacent Violators in O(n).
+    """Isotonic regression (nondecreasing) via stack-based PAV in O(n).
+
     Strict by default (rtol=0.0) to avoid micro-violations in tests.
     """
 
@@ -587,16 +576,18 @@ def calibrate_dykstra(
 
     Projects multiclass probabilities onto the intersection of:
       (A) row simplex: {rows ≥ 0, rows sum to 1} and
-      (B) column-wise isotone-by-score + fixed column sums: {nondecreasing in score order; column sum = M_j}.
+      (B) column-wise isotone-by-score + fixed column sums:
+          {nondecreasing in score order; column sum = M_j}.
 
-    This is the recommended default method for rank-preserving calibration. The algorithm
-    uses exact Euclidean projections via Pool Adjacent Violators (PAV) followed by uniform
-    shifts to satisfy sum constraints.
+    This is the recommended default method for rank-preserving calibration.
+    The algorithm uses exact Euclidean projections via Pool Adjacent Violators
+    (PAV) followed by uniform shifts to satisfy sum constraints.
 
     Args:
         P: Input probability matrix of shape (N, J). Each row represents predicted class
             probabilities for one instance. Rows need not sum to 1 initially.
-        M: Target column sums of shape (J,). Should sum to approximately N for feasibility.
+        M: Target column sums of shape (J,). Should sum to approximately N for
+            feasibility.
         max_iters: Maximum number of iterations. Default 3000 is usually sufficient.
         tol: Convergence tolerance for relative change in solution. Default 1e-7.
         rtol: Relative tolerance for isotonic violations in PAV. Default 0.0 (strict).
@@ -606,18 +597,18 @@ def calibrate_dykstra(
             Should return False to terminate early.
         detect_cycles: If True, detects and breaks cycles in the solution sequence.
         cycle_window: Number of iterations to look back for cycle detection.
-        nearly: Optional dict for nearly-isotonic constraints. Use {"mode": "epsilon", "eps": 0.01}
-            to allow small isotonicity violations.
+        nearly: Optional dict for nearly-isotonic constraints. Use
+            {"mode": "epsilon", "eps": 0.01} to allow small isotonicity violations.
         ties: How to handle tied scores. "stable" preserves input order, "group" pools
             equal-score instances.
         use_jit: If True and numba is available, uses JIT-compiled functions for speed.
-        row_atol: Absolute tolerance on |row sum - 1| for declaring convergence.
+        row_atol: Absolute tolerance on ``|row sum - 1|`` for convergence.
             Absolute, not relative -- see `is_feasible`. The 1e-8 default is what
             alternating projections can actually reach: each sweep ends on a
             column projection, which perturbs the row sums, so no finite iterate
             satisfies both constraint sets exactly. It is still three orders
             tighter than the 1e-5 the previous `np.allclose` check allowed.
-        col_atol: Absolute tolerance on |column sum - M_j| for declaring
+        col_atol: Absolute tolerance on ``|column sum - M_j|`` for declaring
             convergence. Being absolute, it does not loosen as M_j grows with N,
             which the previous check did.
 
@@ -632,7 +623,8 @@ def calibrate_dykstra(
             - final_change: Final relative change in solution
 
     Raises:
-        CalibrationError: If inputs are invalid, algorithm fails to converge, or other errors occur.
+        CalibrationError: If inputs are invalid, the algorithm fails to converge,
+            or other errors occur.
         ValueError: If ties parameter is not "stable" or "group"
 
     Examples:
@@ -657,7 +649,8 @@ def calibrate_dykstra(
         - Memory complexity is O(N*J) for the probability matrices
         - Time complexity per iteration is O(N*J*log(N)) due to sorting
         - For best performance, ensure sum(M) ≈ N and use numba if available
-        - Raises CalibrationError on convergence failure instead of returning unreliable results
+        - Raises CalibrationError on convergence failure rather than returning
+          an unreliable result
     """
     _configure_logging(verbose)
     _, J = _validate_inputs(P, M, max_iters, tol, feasibility_tol)
@@ -684,6 +677,7 @@ def calibrate_dykstra(
     Q_history: list[NDArrayFloat] | None = [] if detect_cycles else None
     converged = False
     final_change = float("inf")
+    iteration = 0
 
     for iteration in range(1, max_iters + 1):
         np.copyto(Q_prev, Q)
@@ -718,7 +712,7 @@ def calibrate_dykstra(
 
         if final_change < tol and feasible:
             converged = True
-            logger.info(f"Dykstra converged at iteration {iteration}")
+            logger.info("Dykstra converged at iteration %d", iteration)
             break
 
         # Cycle detection (optional)
@@ -735,7 +729,7 @@ def calibrate_dykstra(
                 Q_history.pop(0)
 
         if iteration % 100 == 0 or iteration <= 10:
-            logger.debug(f"Dykstra iteration {iteration}: change = {final_change:.2e}")
+            logger.debug("Dykstra iteration %d: change = %.2e", iteration, final_change)
 
         if callback is not None and not callback(iteration, final_change, Q):
             break
@@ -769,8 +763,9 @@ def calibrate_dykstra(
             f"Calibration failed to converge after {iteration} iterations. "
             f"Final change: {final_change:.2e} (tolerance: {tol:.2e}). "
             f"Max row error: {max_row_error:.2e}, max col error: {max_col_error:.2e}. "
-            f"Try: increasing max_iters, relaxing tol, using nearly-isotonic constraints "
-            f"(nearly={{'mode': 'epsilon', 'eps': 0.01}}), or consider temperature scaling."
+            "Try: increasing max_iters, relaxing tol, using nearly-isotonic "
+            "constraints (nearly={'mode': 'epsilon', 'eps': 0.01}), or consider "
+            "temperature scaling."
         )
 
     return CalibrationResult(
@@ -815,16 +810,19 @@ def calibrate_admm(
     Args:
         P: Input probability matrix of shape (N, J). Each row represents predicted class
             probabilities for one instance. Rows need not sum to 1 initially.
-        M: Target column sums of shape (J,). Should sum to approximately N for feasibility.
-        rho: ADMM penalty parameter. Larger values enforce constraints more aggressively.
+        M: Target column sums of shape (J,). Should sum to approximately N for
+            feasibility.
+        rho: ADMM penalty parameter. Larger values enforce constraints more
+            aggressively.
             Default 1.0 works well for most problems.
         max_iters: Maximum number of iterations. Default 1000 is usually sufficient.
         tol: Convergence tolerance for primal/dual residuals. Default 1e-6.
         rtol: Relative tolerance for isotonic violations in PAV. Default 0.0 (strict).
         feasibility_tol: Tolerance for feasibility warnings when sum(M) differs from N.
         verbose: If True, enables debug logging.
-        nearly: Optional dict for nearly-isotonic constraints. Use {"mode": "lambda", "lam": 1.0}
-            for lambda-penalty approach allowing soft isotonicity violations.
+        nearly: Optional dict for nearly-isotonic constraints. Use
+            {"mode": "lambda", "lam": 1.0} for the lambda-penalty approach,
+            allowing soft isotonicity violations.
         ties: How to handle tied scores. "stable" preserves input order, "group" pools
             equal-score instances.
         use_jit: If True and numba is available, uses JIT-compiled functions for speed.
@@ -843,7 +841,8 @@ def calibrate_admm(
             - dual_residuals: List of dual residual norms per iteration
 
     Raises:
-        CalibrationError: If inputs are invalid, algorithm fails to converge, or other errors occur.
+        CalibrationError: If inputs are invalid, the algorithm fails to converge,
+            or other errors occur.
         ValueError: If ties parameter is not "stable" or "group"
 
     Examples:
@@ -908,6 +907,7 @@ def calibrate_admm(
 
     converged = False
     iteration = 0
+    Q_prev = Q.copy()
     for iteration in range(max_iters):
         Q_prev = Q.copy()
 
@@ -1003,7 +1003,11 @@ def calibrate_admm(
 
         if iteration % 100 == 0:
             logger.debug(
-                f"ADMM iter {iteration}: obj={obj_val:.3e}, primal={primal_res:.3e}, dual={dual_res:.3e}"
+                "ADMM iter %d: obj=%.3e, primal=%.3e, dual=%.3e",
+                iteration,
+                obj_val,
+                primal_res,
+                dual_res,
             )
 
         if primal_res < tol and dual_res < tol:
@@ -1040,6 +1044,7 @@ def calibrate_admm(
             verbose=False,
             detect_cycles=False,
             ties="stable",
+            use_jit=use_jit,
         )
         Q = snap.Q
     except CalibrationError as exc:

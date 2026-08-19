@@ -19,7 +19,7 @@ practical rather than mathematical:
 
 from __future__ import annotations
 
-import numpy as np
+from typing import TYPE_CHECKING
 
 from .calibration import (
     ADMMResult,
@@ -29,6 +29,9 @@ from .calibration import (
     calibrate_dykstra,
 )
 from .qp import calibrate_qp
+
+if TYPE_CHECKING:
+    import numpy as np
 
 __all__ = ["calibrate"]
 

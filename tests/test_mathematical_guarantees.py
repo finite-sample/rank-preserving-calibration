@@ -48,7 +48,7 @@ class TestProjectionCorrectness:
             assert np.allclose(Y, Y2, atol=1e-14), "Projection not idempotent"
 
     def test_column_projection_optimality(self):
-        """Test that column projection minimizes distance while satisfying constraints."""
+        """Column projection minimizes distance subject to the constraints."""
         np.random.seed(123)
 
         for _ in range(3):
@@ -311,10 +311,12 @@ class TestNumericalStability:
         v = np.array([2.5])
 
         z_eps = project_near_isotonic_euclidean(v, eps=0.1)
-        assert len(z_eps) == 1 and np.isfinite(z_eps[0])
+        assert len(z_eps) == 1
+        assert np.isfinite(z_eps[0])
 
         z_prox = prox_near_isotonic(v, lam=1.0)
-        assert len(z_prox) == 1 and np.isfinite(z_prox[0])
+        assert len(z_prox) == 1
+        assert np.isfinite(z_prox[0])
 
     def test_already_optimal_cases(self):
         """Test inputs that are already optimal."""

@@ -1,14 +1,14 @@
-# rank_preserving_calibration/nearly.py
-"""
-Nearly isotonic regression utilities.
+"""Nearly isotonic regression utilities.
 
 This module provides "relaxed" isotonic constraints that allow small
 violations of monotonicity—useful when strict isotonicity is too restrictive.
 
 Exports:
-    - project_near_isotonic_euclidean: ε-slack projection (exact L2), optional sum target.
+    - project_near_isotonic_euclidean: ε-slack projection (exact L2), with an
+      optional sum target.
     - prox_near_isotonic: exact proximal operator for λ * sum (z_i - z_{i+1})_+.
-    - prox_near_isotonic_with_sum: same prox with an exact sum constraint via translation.
+    - prox_near_isotonic_with_sum: same prox with an exact sum constraint,
+      imposed by translation.
 """
 
 from __future__ import annotations
@@ -29,28 +29,27 @@ __all__ = [
 def _pav_increasing(
     y: np.ndarray, w: np.ndarray | None = None, rtol: float = 0.0
 ) -> np.ndarray:
-    """
-    Pool-Adjacent-Violators (L2) for a 1D sequence (nondecreasing), supporting weights.
+    """Pool-Adjacent-Violators (L2) for a nondecreasing 1D fit, with weights.
 
-    Parameters
-    ----------
-    y : (n,) array_like
-        Sequence to fit monotonically (already in the order you care about).
-    w : (n,) array_like, optional
-        Positive weights. If None, all ones.
-    rtol : float, optional (default 0.0)
-        Tolerance used in merge decision: we treat blocks as monotone if
-        left_mean <= right_mean + rtol * (|left_mean| + |right_mean| + 1).
+    Args:
+        y: Sequence of shape (n,) to fit monotonically, already in the
+            order you care about.
+        w: Positive weights of shape (n,). If None, all ones.
+        rtol: Tolerance used in the merge decision -- blocks count as
+            monotone when left_mean <= right_mean + rtol *
+            (|left_mean| + |right_mean| + 1).
 
-    Returns
-    -------
-    z : (n,) ndarray
-        Isotonic fit minimizing sum_i w_i * (z_i - y_i)^2 subject to z nondecreasing.
+    Returns:
+        Isotonic fit of shape (n,) minimizing sum_i w_i * (z_i - y_i)^2
+        subject to z nondecreasing.
 
-    Notes
-    -----
-    - Strict by default (rtol=0.0) to avoid micro-violations in tests.
-    - Idempotent: applying to an already isotone sequence returns it unchanged.
+    Raises:
+        ValueError: If the weights are not positive or do not match y.
+
+    Notes:
+        - Strict by default (rtol=0.0) to avoid micro-violations in tests.
+        - Idempotent: applying to an already isotone sequence returns it
+          unchanged.
     """
     y = np.asarray(y, dtype=np.float64)
     n = y.size
@@ -111,33 +110,31 @@ def project_near_isotonic_euclidean(
     sum_target: float | None = None,
     weights: np.ndarray | None = None,
 ) -> np.ndarray:
-    """
-    Project v onto the set { z : z_{i+1} >= z_i - eps } in L2.
+    """Project v onto the set { z : z_{i+1} >= z_i - eps } in L2.
 
     Reduction: define w_i = v_i + i * eps. Then the constraint becomes standard
     isotonic on w. Let w* = isotonic(w) (weighted if weights are provided).
     The exact projection is z* = w* - i * eps. If sum_target is given, apply a
     uniform shift so 1^T z* = sum_target (translation invariance makes this exact).
 
-    Parameters
-    ----------
-    v : (n,) array_like
-        Input vector to project.
-    eps : float
-        Slack parameter (>= 0). Allows z[i+1] >= z[i] - eps instead of strict z[i+1] >= z[i].
-    sum_target : float, optional
-        If provided, perform an exact uniform shift so the result sums to this value.
-    weights : (n,) array_like, optional
-        Positive weights for a weighted L2 projection.
+    Args:
+        v: Input vector of shape (n,) to project.
+        eps: Slack parameter (>= 0). Allows z[i+1] >= z[i] - eps rather
+            than the strict z[i+1] >= z[i].
+        sum_target: If provided, apply an exact uniform shift so the
+            result sums to this value.
+        weights: Positive weights of shape (n,) for a weighted L2
+            projection.
 
-    Returns
-    -------
-    z : (n,) ndarray
-        Projected vector satisfying near-isotonic constraint (and sum, if requested).
+    Returns:
+        Projected vector of shape (n,) satisfying the near-isotonic
+        constraint, and the sum constraint if one was requested.
 
-    Notes
-    -----
-    - Idempotent: applying the projection twice gives the same result.
+    Raises:
+        ValueError: If eps is negative or the weights are invalid.
+
+    Notes:
+        - Idempotent: applying the projection twice gives the same result.
     """
     v = np.asarray(v, dtype=np.float64)
     n = v.size
@@ -169,9 +166,9 @@ def _diff(z: np.ndarray) -> np.ndarray:
     return z[:-1] - z[1:]
 
 
-def _diffT(p: np.ndarray, n: int) -> np.ndarray:
-    """
-    Adjoint of the forward-difference: D^T p.
+def _diff_adjoint(p: np.ndarray, n: int) -> np.ndarray:
+    """Apply the adjoint of the forward difference, D^T p.
+
     For D with rows [0..0,1,-1,0..0], we have:
       (D^T p)_0     = p_0
       (D^T p)_i     = p_i - p_{i-1},  i = 1..n-2
@@ -187,8 +184,8 @@ def _diffT(p: np.ndarray, n: int) -> np.ndarray:
 def _solve_tridiag(
     low: np.ndarray, d: np.ndarray, u: np.ndarray, b: np.ndarray
 ) -> np.ndarray:
-    """
-    Solve a tridiagonal system with the Thomas algorithm:
+    """Solve a tridiagonal system with the Thomas algorithm.
+
       low: sub-diagonal (length n-1)
       d: main diagonal (length n)
       u: super-diagonal (length n-1)
@@ -225,10 +222,12 @@ def prox_near_isotonic(
     reltol: float = 1e-6,
     return_info: bool = False,
 ) -> np.ndarray | tuple[np.ndarray, dict]:
-    r"""
-    Exact proximal operator for the λ-penalty nearly-isotonic term:
+    r"""Compute the exact prox of the λ-penalty nearly-isotonic term.
+
         prox_{λ R}(y),  R(z) = ∑_{i=1}^{n-1} (z_i - z_{i+1})_+,
-    where (x)_+ = max(0, x). This penalizes *downward* steps, relaxing strict isotonicity.
+
+    where (x)_+ = max(0, x). This penalizes *downward* steps, relaxing strict
+    isotonicity.
 
     We solve:
         minimize_z  0.5 * ||z - y||_2^2  +  λ * ∑ (Dz)_+   with  (Dz)_i = z_i - z_{i+1}
@@ -274,7 +273,7 @@ def prox_near_isotonic(
     pr_res = du_res = np.nan
     for k in range(1, max_iters + 1):
         # z-update
-        rhs = y + rho * _diffT(r - u, n)
+        rhs = y + rho * _diff_adjoint(r - u, n)
         z = _solve_tridiag(off, main, off, rhs)
 
         # r-update: one-sided soft-threshold at t = λ/ρ
@@ -294,7 +293,7 @@ def prox_near_isotonic(
 
         # Stopping criteria (Boyd et al.)
         pr = Dz - r
-        dr = rho * _diffT(r - r_prev, n)
+        dr = rho * _diff_adjoint(r - r_prev, n)
 
         pr_res = np.linalg.norm(pr)
         du_res = np.linalg.norm(dr)
@@ -302,7 +301,9 @@ def prox_near_isotonic(
         eps_pr = np.sqrt(m) * abstol + reltol * max(
             np.linalg.norm(Dz), np.linalg.norm(r)
         )
-        eps_du = np.sqrt(n) * abstol + reltol * np.linalg.norm(rho * _diffT(u, n))
+        eps_du = np.sqrt(n) * abstol + reltol * np.linalg.norm(
+            rho * _diff_adjoint(u, n)
+        )
 
         if pr_res <= eps_pr and du_res <= eps_du:
             if return_info:
@@ -331,19 +332,26 @@ def prox_near_isotonic_with_sum(
     return_info: bool = False,
     **kwargs,
 ) -> np.ndarray | tuple[np.ndarray, dict]:
-    """
-    Prox with a **sum constraint**:
-        minimize_z  0.5 * ||z - y||_2^2 + λ ∑ (z_i - z_{i+1})_+   subject to 1^T z = sum_target.
+    """Compute the prox under a **sum constraint**.
+
+        minimize_z  0.5 * ||z - y||_2^2 + λ ∑ (z_i - z_{i+1})_+
+        subject to  1^T z = sum_target
 
     Because R(z) depends only on *differences*, it is translation-invariant:
         R(z + c·1) = R(z).
     Hence the constrained prox is obtained exactly by:
         z* = prox_{λR}(y) + ((sum_target - 1^T prox_{λR}(y)) / n) · 1
 
-    Returns
-    -------
-    If return_info = False (default): z* (ndarray)
-    If return_info = True:           (z*, info_dict)
+    Args:
+        y: Input vector of shape (n,).
+        lam: Penalty weight on downward steps.
+        sum_target: Value the result must sum to.
+        return_info: If True, also return the solver's info dict.
+        **kwargs: Forwarded to :func:`prox_near_isotonic`.
+
+    Returns:
+        ``z*`` when return_info is False (the default), otherwise the
+        pair ``(z*, info_dict)``.
     """
     ret = prox_near_isotonic(y, lam, return_info=return_info, **kwargs)
     if return_info:
@@ -351,7 +359,6 @@ def prox_near_isotonic_with_sum(
         c = (float(sum_target) - float(z.sum())) / z.size
         z_shifted = z + c
         return z_shifted, info
-    else:
-        z = ret if isinstance(ret, np.ndarray) else ret[0]
-        c = (float(sum_target) - float(z.sum())) / z.size
-        return z + c
+    z = ret if isinstance(ret, np.ndarray) else ret[0]
+    c = (float(sum_target) - float(z.sum())) / z.size
+    return z + c

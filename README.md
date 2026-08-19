@@ -92,7 +92,6 @@ pip install rank-preserving-calibration[performance]
 Runtime dependencies are `numpy`, `scipy` and `clarabel` (Apache-2.0, ~2.5 MB). Optional
 extras:
 - `[performance]`: Adds `numba` (JIT compilation)
-- `[docs]`: Documentation building dependencies
 - Examples require `matplotlib`
 
 ## Usage
@@ -307,7 +306,7 @@ The ADMM function returns an `ADMMResult` object with additional convergence his
 
 ## Examples
 
-See our comprehensive documentation examples at [https://finite-sample.github.io/rank_preserving_calibration/examples.html](https://finite-sample.github.io/rank_preserving_calibration/examples.html):
+See our comprehensive documentation examples at [https://finite-sample.github.io/rank-preserving-calibration/examples.html](https://finite-sample.github.io/rank-preserving-calibration/examples.html):
 
 - **Medical Diagnosis**: Breast cancer risk calibration across populations
 - **Financial Risk**: Credit scoring with regulatory compliance

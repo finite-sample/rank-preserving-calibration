@@ -61,4 +61,5 @@ This section contains the complete API documentation for the rank_preserving_cal
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 ```

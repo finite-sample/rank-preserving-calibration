@@ -1,6 +1,5 @@
 # rank_preserving_calibration/kl_nearly.py
-"""
-Nearly isotonic utilities for KL divergence.
+"""Nearly isotonic utilities for KL divergence.
 
 This module provides "relaxed" isotonic constraints for KL geometry that allow
 small violations of monotonicity. The key difference from Euclidean nearly-isotonic:
@@ -48,10 +47,7 @@ def _kl_pav_increasing(
 
     y = np.maximum(y, eps)
 
-    if w is None:
-        w = np.ones(n, dtype=np.float64)
-    else:
-        w = np.asarray(w, dtype=np.float64)
+    w = np.ones(n, dtype=np.float64) if w is None else np.asarray(w, dtype=np.float64)
 
     log_y = np.log(y)
 
@@ -97,10 +93,12 @@ def project_near_kl_isotonic(
     The constraint is: z[i+1] >= z[i] * (1 - eps_slack)
 
     This is the KL analog of the Euclidean nearly-isotonic projection.
-    The key insight is to transform to log space:
+    The key insight is to transform to log space::
+
         log(z[i+1]) >= log(z[i]) + log(1 - eps_slack)
 
-    Let delta = -log(1 - eps_slack) > 0. Then:
+    Let delta = -log(1 - eps_slack) > 0. Then::
+
         log(z[i+1]) >= log(z[i]) - delta
 
     This is equivalent to the additive slack problem in log space.
@@ -115,6 +113,9 @@ def project_near_kl_isotonic(
 
     Returns:
         Near-isotonic projection in KL sense.
+
+    Raises:
+        ValueError: If eps_slack is outside [0, 1).
     """
     v = np.asarray(v, dtype=np.float64)
     n = v.size
@@ -208,8 +209,10 @@ def prox_kl_near_isotonic(
         return_info: If True, also return convergence info dict.
 
     Returns:
-        If return_info=False: z (ndarray)
-        If return_info=True: (z, info_dict)
+        ``z`` when return_info is False, otherwise ``(z, info_dict)``.
+
+    Raises:
+        ValueError: If lam is negative.
     """
     y = np.asarray(y, dtype=np.float64)
     n = y.size
@@ -234,6 +237,7 @@ def prox_kl_near_isotonic(
     u = np.zeros(n - 1, dtype=np.float64)
 
     converged = False
+    iteration = 0
     for iteration in range(1, max_iters + 1):
         z_prev = z.copy()
 

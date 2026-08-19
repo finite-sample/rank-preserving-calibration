@@ -17,7 +17,7 @@ except ImportError:
     HAS_NUMBA = False
 
     # Define identity decorator for graceful fallback
-    def njit(*args, **kwargs):
+    def njit(*args, **_kwargs):
         """Identity decorator when numba is not available."""
 
         def decorator(func):
@@ -43,17 +43,12 @@ def project_row_simplex_jit(rows: np.ndarray, eps: float = 1e-15) -> np.ndarray:
 
     Projects each row onto the probability simplex (sums to 1, non-negative).
 
-    Parameters
-    ----------
-    rows : np.ndarray
-        Matrix of shape (N, J) to project.
-    eps : float
-        Small tolerance for numerical stability.
+    Args:
+        rows: Matrix of shape (N, J) to project.
+        eps: Small tolerance for numerical stability.
 
-    Returns
-    -------
-    np.ndarray
-        Projected matrix with same shape as input.
+    Returns:
+        Projected matrix with the same shape as the input.
     """
     N, J = rows.shape
     projected = np.empty_like(rows)
@@ -101,29 +96,20 @@ def isotonic_regression_jit(
 
     Computes isotonic (non-decreasing) regression in O(n) time.
 
-    Parameters
-    ----------
-    y : np.ndarray
-        Input values to make isotonic.
-    weights : np.ndarray, optional
-        Weights for weighted isotonic regression.
-    rtol : float
-        Relative tolerance for violations.
+    Args:
+        y: Input values to make isotonic.
+        weights: Weights for weighted isotonic regression.
+        rtol: Relative tolerance for violations.
 
-    Returns
-    -------
-    np.ndarray
-        Isotonic fit with same shape as y.
+    Returns:
+        Isotonic fit with the same shape as ``y``.
     """
     n = y.size
     if n <= 1:
         return y.copy()
 
     # Initialize weights if not provided
-    if weights is None:
-        w = np.ones(n, dtype=np.float64)
-    else:
-        w = weights.astype(np.float64)
+    w = np.ones(n, dtype=np.float64) if weights is None else weights.astype(np.float64)
 
     # PAV algorithm using block pooling
     # Arrays for tracking blocks
@@ -181,14 +167,10 @@ def run_lengths_jit(x_sorted: np.ndarray) -> np.ndarray:
 
     Computes lengths of consecutive equal values.
 
-    Parameters
-    ----------
-    x_sorted : np.ndarray
-        Sorted input array.
+    Args:
+        x_sorted: Sorted input array.
 
-    Returns
-    -------
-    np.ndarray
+    Returns:
         Array of run lengths.
     """
     n = x_sorted.size
@@ -227,11 +209,9 @@ def run_lengths_jit(x_sorted: np.ndarray) -> np.ndarray:
 def get_jit_functions():
     """Get JIT-compiled functions if available, otherwise None.
 
-    Returns
-    -------
-    dict
-        Dictionary mapping function names to implementations.
-        Values are None if Numba is not available.
+    Returns:
+        Dictionary mapping function names to implementations. Values are None
+        if Numba is not available.
     """
     if HAS_NUMBA:
         return {
@@ -240,10 +220,9 @@ def get_jit_functions():
             "run_lengths": run_lengths_jit,
             "available": True,
         }
-    else:
-        return {
-            "project_row_simplex": None,
-            "isotonic_regression": None,
-            "run_lengths": None,
-            "available": False,
-        }
+    return {
+        "project_row_simplex": None,
+        "isotonic_regression": None,
+        "run_lengths": None,
+        "available": False,
+    }

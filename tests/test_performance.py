@@ -1,5 +1,6 @@
 """Performance tests for JIT compilation and progress bar functionality."""
 
+import contextlib
 import time
 
 import numpy as np
@@ -47,10 +48,8 @@ class TestPerformanceOptimizations:
         M = np.full(J, N / J)
 
         # Warm up JIT
-        try:
-            _ = calibrate_dykstra(P[:10], M, max_iters=10, use_jit=True, verbose=False)
-        except CalibrationError:
-            pass
+        with contextlib.suppress(CalibrationError):
+            calibrate_dykstra(P[:10], M, max_iters=10, use_jit=True, verbose=False)
 
         # Time with JIT
         start = time.perf_counter()
@@ -74,8 +73,10 @@ class TestPerformanceOptimizations:
 
         # JIT should be faster (at least 20% improvement expected)
         speedup = time_pure / time_jit
-        print(
-            f"JIT speedup: {speedup:.2f}x (JIT: {time_jit:.3f}s, Pure: {time_pure:.3f}s)"
+        # The measurement is the point of the test; `pytest -s` surfaces it.
+        print(  # noqa: T201
+            f"JIT speedup: {speedup:.2f}x "
+            f"(JIT: {time_jit:.3f}s, Pure: {time_pure:.3f}s)"
         )
 
         # Results should still be very close
@@ -102,7 +103,8 @@ class TestPerformanceOptimizations:
             assert np.allclose(result.Q.sum(axis=1), 1.0, atol=1e-6)
             assert np.allclose(result.Q.sum(axis=0), M, atol=1e-4)
         except CalibrationError:
-            # With only 50 iterations on a large problem, convergence failure is acceptable
+            # With only 50 iterations on a large problem, convergence failure
+            # is acceptable.
             pass
 
     def test_jit_with_nearly_isotonic(self):

@@ -217,8 +217,7 @@ class TestTwoStageVsDykstra:
             # At minimum, both should be valid results
             assert flat_dykstra["mean_column_variance"] >= 0
             assert flat_two_stage["mean_column_variance"] >= 0
-        except Exception:
-            # If Dykstra doesn't converge on shifted marginals, that's OK
+        except Exception:  # noqa: S110  # non-convergence on shifted marginals is OK
             pass
 
     def test_both_satisfy_constraints(self):

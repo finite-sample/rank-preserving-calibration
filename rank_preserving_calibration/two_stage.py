@@ -1,6 +1,5 @@
 # rank_preserving_calibration/two_stage.py
-"""
-Two-stage calibration approach using Iterative Proportional Fitting (IPF).
+"""Two-stage calibration approach using Iterative Proportional Fitting (IPF).
 
 This module provides an alternative calibration strategy that may produce
 less "flat" solutions when distribution shifts are large:
@@ -156,7 +155,7 @@ def calibrate_ipf(
     final_change = float("inf")
     iteration = 0
 
-    for iteration in range(1, max_iters + 1):
+    for iteration in range(1, max_iters + 1):  # noqa: B007  # `iteration` is the reported iteration count
         Q_prev = Q.copy()
 
         # Row scaling: normalize rows to sum to 1
@@ -277,7 +276,7 @@ def calibrate_two_stage(
     converged = ipf_result.converged
     proj_iterations = 0
 
-    for proj_iterations in range(1, proj_max_iters + 1):
+    for proj_iterations in range(1, proj_max_iters + 1):  # noqa: B007  # counter
         Q_prev = Q.copy()
 
         # Apply isotonic regression per column (maintaining original rank order)
