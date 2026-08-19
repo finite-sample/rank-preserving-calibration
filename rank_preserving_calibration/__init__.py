@@ -1,5 +1,4 @@
-"""
-Rank-preserving calibration of multiclass probabilities.
+"""Rank-preserving calibration of multiclass probabilities.
 
 This package provides robust implementations of rank-preserving calibration
 algorithms including Dykstra's alternating projections (exact intersection)
@@ -8,10 +7,11 @@ and ADMM (penalty-based with final snap to the exact projection).
 Quick start
 -----------
 >>> import numpy as np
->>> from rank_preserving_calibration import calibrate_dykstra, feasibility_metrics, isotonic_metrics
+>>> from rank_preserving_calibration import calibrate_dykstra
+>>> from rank_preserving_calibration import feasibility_metrics, isotonic_metrics
 >>> # Toy data
 >>> rng = np.random.default_rng(42)
->>> P = rng.dirichlet(np.ones(4), size=100)       # N x J predicted probs (rows sum to 1)
+>>> P = rng.dirichlet(np.ones(4), size=100)  # N x J predicted probs, rows sum to 1
 >>> M = (P.sum(axis=0) + rng.normal(0, 0.05, 4))  # target column marginals (sum ≈ N)
 >>> M = np.maximum(M, 1e-3)
 >>> # Calibrate
@@ -68,7 +68,8 @@ from .kl_nearly import (
     prox_kl_near_isotonic,
 )
 
-# Public API: metrics (feasibility, isotonicity, distances, scoring, sharpness, AUC deltas)
+# Public API: metrics (feasibility, isotonicity, distances, scoring,
+# sharpness, AUC deltas)
 # Public API: KL divergence metrics
 from .metrics import (
     auc_deltas,

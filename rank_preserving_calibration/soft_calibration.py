@@ -1,6 +1,5 @@
 # rank_preserving_calibration/soft_calibration.py
-"""
-Soft-constraint calibration with tunable trade-offs.
+"""Soft-constraint calibration with tunable trade-offs.
 
 This module provides calibration methods that use soft penalties instead of
 hard constraints, allowing users to trade off between:
@@ -60,7 +59,7 @@ class SoftCalibrationResult:
 
 
 def _compute_rank_penalty(Q: np.ndarray, column_orders: list[np.ndarray]) -> float:
-    """Compute total rank violation penalty: sum of (q[i] - q[i+1])_+ for all columns."""
+    """Sum the rank violations (q[i] - q[i+1])_+ over every column."""
     penalty = 0.0
     J = Q.shape[1]
     for j in range(J):
@@ -213,7 +212,7 @@ def calibrate_soft(
     final_change = float("inf")
     iteration = 0
 
-    for iteration in range(1, max_iters + 1):
+    for iteration in range(1, max_iters + 1):  # noqa: B007  # `iteration` is the reported iteration count
         Q_prev = Q.copy()
 
         # Gradient of ||Q - P||² is 2(Q - P)
@@ -320,6 +319,10 @@ def calibrate_soft_admm(
 
     Returns:
         SoftCalibrationResult with calibrated matrix.
+
+    Raises:
+        CalibrationError: If P or M are malformed, or a penalty weight is
+            negative.
     """
     _configure_logging(verbose)
 
@@ -361,7 +364,7 @@ def calibrate_soft_admm(
     final_change = float("inf")
     iteration = 0
 
-    for iteration in range(1, max_iters + 1):
+    for iteration in range(1, max_iters + 1):  # noqa: B007  # `iteration` is the reported iteration count
         Q_prev = Q.copy()
 
         # Q-update: solve quadratic
@@ -369,7 +372,8 @@ def calibrate_soft_admm(
         #     + (rho/2)||Q - Z + u_z||² + (rho/2)||Q - Y + u_y||²
         # This is a quadratic in Q, solve via closed form
 
-        # Gradient is: (Q - P) + lam_m * (col_sums - M) broadcast + rho*(Q - Z + u_z) + rho*(Q - Y + u_y)
+        # Gradient is: (Q - P) + lam_m * (col_sums - M) broadcast
+        #              + rho*(Q - Z + u_z) + rho*(Q - Y + u_y)
         # Setting to zero:
         # (1 + 2*rho)*Q + lam_m * broadcast = P + rho*(Z - u_z) + rho*(Y - u_y)
 
@@ -385,12 +389,18 @@ def calibrate_soft_admm(
             Q_new = np.zeros_like(Q)
             for j in range(J):
                 # For column j: solve
-                # (1 + 2*rho + lam_m)*Q_j + lam_m*11^T Q_j / N = numerator_j + lam_m*M_j/N
-                # Actually: gradient = Q_j - P_j + lam_m*(sum(Q_j) - M_j)*1 + rho*(Q_j - Z_j + u_z_j) + rho*(Q_j - Y_j + u_y_j)
-                # = (1 + 2*rho)*Q_j + lam_m*1*1^T Q_j - P_j - rho*Z_j + rho*u_z_j - rho*Y_j + rho*u_y_j + lam_m*(-M_j)*1
+                # (1 + 2*rho + lam_m)*Q_j + lam_m*11^T Q_j / N
+                #     = numerator_j + lam_m*M_j/N
+                # Actually: gradient
+                #     = Q_j - P_j + lam_m*(sum(Q_j) - M_j)*1
+                #       + rho*(Q_j - Z_j + u_z_j) + rho*(Q_j - Y_j + u_y_j)
+                #     = (1 + 2*rho)*Q_j + lam_m*1*1^T Q_j - P_j - rho*Z_j
+                #       + rho*u_z_j - rho*Y_j + rho*u_y_j + lam_m*(-M_j)*1
 
                 # Setting to 0:
-                # (1 + 2*rho)*Q_j + lam_m*1*sum(Q_j) = P_j + rho*Z_j - rho*u_z_j + rho*Y_j - rho*u_y_j + lam_m*M_j*1
+                # (1 + 2*rho)*Q_j + lam_m*1*sum(Q_j)
+                #     = P_j + rho*Z_j - rho*u_z_j + rho*Y_j - rho*u_y_j
+                #       + lam_m*M_j*1
 
                 # Let c = sum(Q_j). Then:
                 # (1 + 2*rho)*Q_j = RHS - lam_m*c*1

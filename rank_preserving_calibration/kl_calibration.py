@@ -1,14 +1,15 @@
 # rank_preserving_calibration/kl_calibration.py
-"""
-KL-divergence rank-preserving calibration.
+"""KL-divergence rank-preserving calibration.
 
 This module provides rank-preserving calibration using KL divergence (relative entropy)
 as the loss function instead of squared Euclidean distance. KL divergence is a natural
 choice for probability calibration in label-shift scenarios.
 
 Key innovations:
-1. **Anchor-Reference Decoupling**: Separate A (ranking anchor) from R (reference for KL)
-2. **Geometric Mean Pooling**: KL isotonic regression uses geometric (not arithmetic) mean
+1. **Anchor-Reference Decoupling**: Separate A (ranking anchor) from R (the KL
+   reference)
+2. **Geometric Mean Pooling**: KL isotonic regression uses the geometric, not
+   the arithmetic, mean
 3. **Multiplicative Rescaling**: Sum constraints via multiplication (not addition)
 4. **Pareto Frontier**: Report whole λ-path, not single tuned point
 
@@ -113,7 +114,9 @@ def _kl_div_matrix(Q: np.ndarray, R: np.ndarray, eps: float = 1e-300) -> float:
     R = np.asarray(R, dtype=np.float64)
 
     # Handle zeros: 0 * log(0/x) = 0
-    mask = Q > eps
+    # SIM300 fires because ruff reads the bare capital `Q` as a constant; it
+    # is the probability matrix, so this is not a Yoda condition.
+    mask = Q > eps  # noqa: SIM300
     kl = np.zeros_like(Q)
     kl[mask] = Q[mask] * (_safe_log(Q[mask], eps) - _safe_log(R[mask], eps))
 
@@ -146,6 +149,9 @@ def _kl_isotonic_regression(
 
     Returns:
         Isotonic fit minimizing KL divergence.
+
+    Raises:
+        ValueError: If the weights do not match y's shape or are not positive.
     """
     y = np.asarray(y, dtype=np.float64)
     n = y.size
@@ -378,7 +384,7 @@ def calibrate_kl(
     final_change = float("inf")
     iteration = 0
 
-    for iteration in range(1, max_iters + 1):
+    for iteration in range(1, max_iters + 1):  # noqa: B007  # `iteration` is the reported iteration count
         Q_prev = Q.copy()
 
         # Row projection with Dykstra correction
@@ -449,7 +455,7 @@ def calibrate_kl(
 def _compute_rank_penalty_from_orders(
     Q: np.ndarray, column_orders: list[np.ndarray]
 ) -> float:
-    """Compute total rank violation penalty: sum of (q[i] - q[i+1])_+ for all columns."""
+    """Sum the rank violations (q[i] - q[i+1])_+ over every column."""
     penalty = 0.0
     J = Q.shape[1]
     for j in range(J):
@@ -505,15 +511,9 @@ def calibrate_kl_soft(
     P = np.asarray(P, dtype=np.float64)
     M = np.asarray(M, dtype=np.float64)
 
-    if R is None:
-        R = P.copy()
-    else:
-        R = np.asarray(R, dtype=np.float64)
+    R = P.copy() if R is None else np.asarray(R, dtype=np.float64)
 
-    if A is None:
-        A = P.copy()
-    else:
-        A = np.asarray(A, dtype=np.float64)
+    A = P.copy() if A is None else np.asarray(A, dtype=np.float64)
 
     column_orders = [np.argsort(A[:, j], kind="mergesort") for j in range(J)]
 
@@ -523,6 +523,7 @@ def calibrate_kl_soft(
 
     converged = False
     final_change = float("inf")
+    iteration = 0
 
     for iteration in range(1, max_iters + 1):
         Q_prev = Q.copy()
@@ -643,15 +644,9 @@ def calibrate_kl_pareto(
     P = np.asarray(P, dtype=np.float64)
     M = np.asarray(M, dtype=np.float64)
 
-    if R is None:
-        R = P.copy()
-    else:
-        R = np.asarray(R, dtype=np.float64)
+    R = P.copy() if R is None else np.asarray(R, dtype=np.float64)
 
-    if A is None:
-        A = P.copy()
-    else:
-        A = np.asarray(A, dtype=np.float64)
+    A = P.copy() if A is None else np.asarray(A, dtype=np.float64)
 
     if lambda_grid is None:
         lambda_grid = np.logspace(-2, 3, 20)

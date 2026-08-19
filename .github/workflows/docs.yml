@@ -1,46 +1,29 @@
-name: Documentation
+name: Docs
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   docs:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - name: Install uv
-      uses: astral-sh/setup-uv@v7
-      with:
-        version: "latest"
-    - name: Set up Python
-      run: uv python install
-    - name: Install dependencies
-      run: uv sync --extra docs
-    - name: Build documentation
-      run: |
-        cd docs
-        uv run make html
-    - name: Setup Pages
-      uses: actions/configure-pages@v5
-    - name: Upload artifact
-      uses: actions/upload-pages-artifact@v3
-      with:
-        path: 'docs/_build/html'
-    - name: Deploy to GitHub Pages
-      id: deployment
-      uses: actions/deploy-pages@v4
+    uses: gojiplus/py-canon/.github/workflows/reusable-docs.yml@v1
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    with:
+      docs-dir: docs/source
+      # 67 of the 276 docstring examples do not run: the module-level Quick
+      # start prints without recording expected output, and several docstrings
+      # use names they never import. They are illustrative, not executable.
+      # Turn this on once they are repaired.
+      run-doctests: false
+      deploy: ${{ github.event_name == 'push' }}

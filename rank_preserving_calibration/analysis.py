@@ -1,6 +1,5 @@
 # rank_preserving_calibration/analysis.py
-"""
-Analysis utilities for understanding calibration behavior.
+"""Analysis utilities for understanding calibration behavior.
 
 This module provides functions to diagnose and understand calibration outcomes,
 particularly the "flatness" problem that occurs when distribution shifts are large.
@@ -44,10 +43,10 @@ def flatness_metrics(
             - "total_variance": Total variance of all Q entries
             - "entropy_per_row": Mean entropy of each row
             - "mean_max_prob": Mean of maximum probability in each row
-            If P is provided:
-                - "variance_ratio": Var(Q) / Var(P), lower means flatter
-            If M is provided:
-                - "distance_to_uniform": Frobenius distance from uniform solution
+            - "variance_ratio": Var(Q) / Var(P), lower means flatter. Only when
+              P is provided.
+            - "distance_to_uniform": Frobenius distance from the uniform
+              solution. Only when M is provided.
 
     Examples:
         >>> import numpy as np

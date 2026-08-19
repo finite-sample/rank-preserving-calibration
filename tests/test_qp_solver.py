@@ -11,6 +11,7 @@ A third opinion, cvxpy, is used where it is installed.
 
 from __future__ import annotations
 
+import contextlib
 import time
 
 import numpy as np
@@ -99,8 +100,7 @@ class TestSolversAgree:
         cons = [Q >= 0, cp.sum(Q, axis=1) == 1, cp.sum(Q, axis=0) == M]
         for j in range(J):
             order = np.argsort(P[:, j], kind="mergesort")
-            for i in range(N - 1):
-                cons.append(Q[order[i + 1], j] >= Q[order[i], j])
+            cons.extend(Q[order[i + 1], j] >= Q[order[i], j] for i in range(N - 1))
         problem = cp.Problem(cp.Minimize(cp.sum_squares(Q - P)), cons)
         problem.solve(solver=cp.CLARABEL, tol_gap_abs=1e-12, tol_gap_rel=1e-12)
 
@@ -220,11 +220,11 @@ class TestCalibrateDispatcher:
         """The exact-feasibility rule holds whichever solver is chosen."""
         P, _ = feasible_problem(12, N=30, J=3)
         M = P.sum(axis=0) * 1.05
-        with pytest.warns(UserWarning, match="(?i)feasib|must equal"):
-            try:
-                calibrate(P, M)
-            except Exception:
-                pass
+        with (
+            pytest.warns(UserWarning, match="(?i)feasib|must equal"),
+            contextlib.suppress(Exception),
+        ):
+            calibrate(P, M)
 
 
 # --------------------------------------------------------------------------- #

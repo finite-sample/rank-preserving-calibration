@@ -18,7 +18,7 @@ pip install rank_preserving_calibration
 For development, clone the repository and install in editable mode:
 
 ```bash
-git clone https://github.com/finite-sample/rank_preserving_calibration.git
+git clone https://github.com/finite-sample/rank-preserving-calibration.git
 cd rank_preserving_calibration
 pip install -e .
 ```

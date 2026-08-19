@@ -19,3 +19,6 @@ ms/ms.bbl
 ms/ms.blg
 ms/ms.log
 ms/ms.out
+
+# Coverage data
+.coverage

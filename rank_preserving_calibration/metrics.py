@@ -1,4 +1,5 @@
-# rank_preserving_calibration/metrics.py
+"""Calibration quality metrics: feasibility, isotonicity, distances, scoring."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -38,7 +39,9 @@ def kl_divergence(Q: np.ndarray, R: np.ndarray, eps: float = 1e-15) -> float:
     Q = np.asarray(Q, dtype=np.float64)
     R = np.asarray(R, dtype=np.float64)
 
-    mask = Q > eps
+    # SIM300 fires because ruff reads the bare capital `Q` as a constant; it
+    # is the probability matrix, so this is not a Yoda condition.
+    mask = Q > eps  # noqa: SIM300
     kl = np.zeros_like(Q)
     kl[mask] = Q[mask] * (_safe_log(Q[mask]) - _safe_log(R[mask]))
 
@@ -112,8 +115,10 @@ def feasibility_metrics(Q: np.ndarray, M: np.ndarray | None = None) -> dict[str,
 
     Returns:
         Dictionary containing feasibility metrics:
-            - "row": Row constraint metrics including max/mean absolute errors and min value
-            - "col": Column constraint metrics (if M provided) including various error norms
+            - "row": Row constraint metrics -- max/mean absolute errors and the
+              minimum value
+            - "col": Column constraint metrics (if M provided) -- various error
+              norms
 
     Examples:
         >>> import numpy as np
@@ -566,8 +571,10 @@ def informativeness_ratio(Q: np.ndarray, P: np.ndarray) -> dict[str, Any]:
 
     if var_p > 1e-15:
         total_ratio = var_q / var_p
+    elif var_q > 0:
+        total_ratio = float("inf")
     else:
-        total_ratio = float("inf") if var_q > 0 else 1.0
+        total_ratio = 1.0
 
     # Per-column ratios
     col_var_q = np.var(Q, axis=0)

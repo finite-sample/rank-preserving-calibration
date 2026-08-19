@@ -10,8 +10,8 @@ authors:
 version: "0.6.0"
 date-released: "2025-05-01"
 license: MIT
-repository-code: "https://github.com/finite-sample/rank_preserving_calibration"
-url: "https://finite-sample.github.io/rank_preserving_calibration/"
+repository-code: "https://github.com/finite-sample/rank-preserving-calibration"
+url: "https://finite-sample.github.io/rank-preserving-calibration/"
 keywords:
   - "calibration"
   - "machine learning"

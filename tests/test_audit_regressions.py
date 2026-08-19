@@ -12,6 +12,8 @@ meant to assert.
 
 from __future__ import annotations
 
+import contextlib
+
 import numpy as np
 import pytest
 
@@ -175,11 +177,12 @@ class TestInfeasibleInputIsHandledAsDocumented:
         """A user must be told the targets cannot be met, whatever happens next."""
         P, _ = feasible_problem(7, N=40, J=3)
         M = P.sum(axis=0) * scale
-        with pytest.warns(UserWarning, match="(?i)feasib|sum"):
-            try:
-                calibrate_dykstra(P, M, max_iters=500, tol=1e-10)
-            except Exception:
-                pass  # raising is acceptable; failing silently is not
+        # Raising is acceptable; failing silently is not.
+        with (
+            pytest.warns(UserWarning, match="(?i)feasib|sum"),
+            contextlib.suppress(Exception),
+        ):
+            calibrate_dykstra(P, M, max_iters=500, tol=1e-10)
 
     def test_exactly_feasible_targets_do_not_warn(self):
         """The warning must not cry wolf on a well-posed problem."""
@@ -263,8 +266,7 @@ class TestAgainstIndependentSolver:
         cons = [Q >= 0, cp.sum(Q, axis=1) == 1, cp.sum(Q, axis=0) == M]
         for j in range(J):
             order = np.argsort(P[:, j], kind="mergesort")
-            for i in range(N - 1):
-                cons.append(Q[order[i + 1], j] >= Q[order[i], j])
+            cons.extend(Q[order[i + 1], j] >= Q[order[i], j] for i in range(N - 1))
         problem = cp.Problem(cp.Minimize(cp.sum_squares(Q - P)), cons)
         problem.solve(solver=cp.CLARABEL, tol_gap_abs=1e-12, tol_gap_rel=1e-12)
 

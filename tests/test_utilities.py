@@ -108,7 +108,7 @@ class TestRandomNumberHandling:
                 assert v1 == v2
 
     def test_create_test_case_deterministic_and_state_isolated(self):
-        """Test that create_test_case is deterministic and doesn't affect global state."""
+        """create_test_case is deterministic and leaves global state alone."""
         np.random.seed(123)
         state_before = np.random.get_state()
 
@@ -251,7 +251,8 @@ class TestEntropyCalculations:
         ]
 
         assert entropy_uniform > entropy_concentrated, (
-            f"Uniform entropy ({entropy_uniform}) should be higher than concentrated ({entropy_concentrated})"
+            f"Uniform entropy ({entropy_uniform}) should be higher than "
+            f"concentrated ({entropy_concentrated})"
         )
 
 

@@ -355,7 +355,8 @@ def analyze_calibration_result(P: np.ndarray, result, M: np.ndarray) -> dict:
         },
         "marginal_correction": marginal_correction,
         "convergence": {
-            "converged": True,  # Always True if we get a result (failure raises CalibrationError)
+            # Always True if we get a result: failure raises CalibrationError.
+            "converged": True,
             "iterations": result.iterations,
             "final_change": result.final_change,
         },

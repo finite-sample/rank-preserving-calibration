@@ -182,7 +182,8 @@ class TestLambdaPenaltyIntegration:
                 assert valid_violations[-1] <= valid_violations[0] + 1e-6, (
                     "Large lambda should reduce violations"
                 )
-        # If fewer than 2 converge, the test passes (acceptable given limited iterations)
+        # If fewer than 2 converge the test passes: acceptable given the
+        # limited iteration budget.
 
 
 class TestNearlyIsotonicUtilities:
@@ -294,10 +295,12 @@ class TestNearlyIsotonicEdgeCases:
         v_single = np.array([1.5])
 
         z_eps = project_near_isotonic_euclidean(v_single, eps=0.1)
-        assert len(z_eps) == 1 and z_eps[0] == v_single[0]
+        assert len(z_eps) == 1
+        assert z_eps[0] == v_single[0]
 
         z_prox = prox_near_isotonic(v_single, lam=1.0)
-        assert len(z_prox) == 1 and np.allclose(z_prox, v_single)
+        assert len(z_prox) == 1
+        assert np.allclose(z_prox, v_single)
 
         # Empty arrays should be handled gracefully (tested in main algorithms)
         empty_P = np.empty((0, 2))

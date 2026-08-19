@@ -62,7 +62,7 @@ class TestDykstraProperties:
         try:
             result = calibrate_dykstra(P, M, max_iters=2000, tol=1e-6, verbose=False)
 
-            # Relaxed constraint checking - handle cases where algorithm may not fully converge
+            # Relaxed constraint checking: the algorithm may not fully converge.
             row_errors = np.abs(result.Q.sum(axis=1) - 1.0)
             col_errors = np.abs(result.Q.sum(axis=0) - M)
 
@@ -75,7 +75,8 @@ class TestDykstraProperties:
             )
             assert np.all(result.Q >= -2e-2), "Negativity constraint violated"
         except CalibrationError:
-            # With challenging cases and strict tolerance, convergence failure is acceptable
+            # With challenging cases and a strict tolerance, convergence failure
+            # is acceptable.
             pass
 
     @given(data=generate_calibration_problem())
@@ -161,7 +162,8 @@ class TestADMMProperties:
                 f"ADMM column constraints: max error {np.max(col_errors)}"
             )
         except CalibrationError:
-            # With challenging cases and limited iterations, convergence failure is acceptable
+            # With challenging cases and limited iterations, convergence failure
+            # is acceptable.
             pass
 
     def test_admm_vs_dykstra_consistency_sample(self):
@@ -184,7 +186,8 @@ class TestADMMProperties:
                 reference_scale = np.linalg.norm(P, "fro")
 
                 assert distance < 0.5 * reference_scale, (
-                    f"Dykstra and ADMM too different: distance = {distance}, scale = {reference_scale}"
+                    f"Dykstra and ADMM too different: distance = {distance}, "
+                    f"scale = {reference_scale}"
                 )
             except CalibrationError:
                 # With limited iterations, one or both algorithms may not converge
@@ -244,9 +247,10 @@ class TestAlgorithmicInvariants:
                 assert result.max_row_error < 1e-8
                 assert result.max_col_error < 1e-8
             except CalibrationError as e:
-                # For very strict tolerance, convergence failure is acceptable
-                # but should mention convergence in the error message
-                assert "converge" in str(e).lower()
+                # Both outcomes are acceptable here, so pytest.raises cannot
+                # express the contract: if it *does* fail, the message must say
+                # why.
+                assert "converge" in str(e).lower()  # noqa: PT017
 
 
 class TestSpecialCases:
@@ -284,8 +288,8 @@ class TestSpecialCases:
                 f"Changed too much from already feasible: {distance}"
             )
         except CalibrationError:
-            # With extremely strict tolerance (1e-12), even feasible cases might not converge
-            # within 100 iterations. This is acceptable.
+            # With an extremely strict tolerance (1e-12), even feasible cases
+            # might not converge within 100 iterations. This is acceptable.
             pass
 
     def test_constant_columns(self):

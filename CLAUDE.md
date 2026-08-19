@@ -277,13 +277,13 @@ The repository has comprehensive Sphinx documentation deployed to GitHub Pages:
 ### Documentation Commands
 ```bash
 # Install documentation dependencies
-uv sync --extra docs
+uv sync --group docs
 
-# Build documentation locally
-cd docs && make html
+# Build documentation the way CI does (warnings are errors)
+uv run sphinx-build -W -b html docs/source docs/_build/html
 
 # View built docs
-open _build/html/index.html
+open docs/_build/html/index.html
 ```
 
 ### Key Documentation Files
@@ -296,7 +296,7 @@ open _build/html/index.html
 - `changelog.md`: Version history
 
 ### Documentation URL
-**Live documentation**: https://finite-sample.github.io/rank_preserving_calibration/
+**Live documentation**: https://finite-sample.github.io/rank-preserving-calibration/
 
 ### Build Artifacts
 - Local builds create `docs/_build/` (excluded from git via .gitignore)
@@ -305,17 +305,21 @@ open _build/html/index.html
 
 ## CI/CD and Quality
 
-The repository uses GitHub Actions for CI with:
-- Python 3.12+ testing environment (3.12, 3.13, 3.14)
-- Installation via `uv sync --group test`
-- Test execution with `uv run pytest tests/ -v`
-- Linting with `uv run ruff check .` and `uv run ruff format --check .`
-- Automated workflows for both CI testing and releases
-- Documentation building and deployment to GitHub Pages
-- Sigstore-signed releases
+CI, docs and releases run through the shared py-canon reusable workflows; the
+files in `.github/workflows/` are thin shims that pass this repo's inputs.
+
+- `ci.yml` -> `reusable-ci`: ruff lint and format, pyright, pydoclint,
+  `preen check --strict`, the test suite on Python 3.12 and 3.14 with a
+  coverage floor, and a wheel that is built, `twine check`ed and re-tested in a
+  clean environment.
+- `docs.yml` -> `reusable-docs`: `sphinx-build -W` over `docs/source`, deployed
+  to GitHub Pages on pushes to main.
+- `release.yml` -> `reusable-release`: builds on a `v*.*.*` tag and publishes to
+  PyPI through trusted publishing with PEP 740 attestations.
 
 ### Local Development
 - Use `uv` for dependency management
 - Run `uv run ruff format .` before committing
 - Run `uv run pytest tests/ -v` to verify changes
+- Run `uvx preen check --strict` to see what CI's lint job will see
 - You are on macOS locally

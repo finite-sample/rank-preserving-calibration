@@ -9,8 +9,6 @@ This section provides comprehensive real-world examples of rank-preserving calib
 examples/medical_calibration
 examples/text_classification
 examples/vision_calibration
-examples/financial_calibration
-examples/survey_calibration
 ```
 
 ## Example Overview
