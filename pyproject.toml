@@ -161,6 +161,28 @@ source = ["rank_preserving_calibration"]
 markers = [
   "slow: long-running checks, chiefly the scaling regression guard",
 ]
+minversion = "6"
+testpaths = ["tests"]
+log_level = "INFO"
+xfail_strict = true
+filterwarnings = [
+    "error",
+    # Both are this package's own advisories, and both are accurate.
+    #
+    # The KL soft solver plateaus rather than reaching tol=1e-6: on the
+    # N=15, J=3, seed=42 case the final change settles near 1.4e-5 and
+    # stays there from 20k iterations through 100k, so raising max_iters
+    # only costs time. Worth revisiting in the solver, not by muting it.
+    #
+    # The feasibility advisory fires where tests deliberately build
+    # matrices whose row sums cannot meet the column totals, which is
+    # most of the Hypothesis-generated space. Tests that are *about*
+    # that warning already assert it with pytest.warns, which sees it
+    # regardless of this filter.
+    "ignore:KL soft calibration did not converge:UserWarning",
+    "ignore:Sum of M .* must equal:UserWarning",
+]
+addopts = ["--strict-config", "--strict-markers", "-ra"]
 
 [tool.pyright]
 include = ["rank_preserving_calibration"]
