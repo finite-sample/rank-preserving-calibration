@@ -744,6 +744,8 @@ def calibrate_dykstra(
             ties=ties,
             score_sorted=score_sorted,
             max_iters=100,
+            row_atol=row_atol,
+            col_atol=col_atol,
         )
 
         # If now feasible, count as converged for reporting
@@ -938,7 +940,11 @@ def calibrate_admm(
             for j in range(J):
                 idx = column_orders[j]
                 v_sorted = Q_unconstrained[idx, j]
-                z = prox_near_isotonic(v_sorted, lam_pen)
+                # prox_near_isotonic's rho and max_iters belong to the inner
+                # ADMM that solves the prox subproblem. They are not this
+                # function's outer penalty and iteration budget, and forcing
+                # those in would change the prox itself.
+                z = prox_near_isotonic(v_sorted, lam_pen)  # preen: allow-dropped-arg
                 if isinstance(z, tuple):  # safety with return_info variants
                     z = z[0]
                 Q_unconstrained[idx, j] = z
@@ -1045,6 +1051,13 @@ def calibrate_admm(
             detect_cycles=False,
             ties="stable",
             use_jit=use_jit,
+            # The snap's Q is what gets returned, so a caller asking for a
+            # nearly-isotonic relaxation has to reach it -- otherwise the
+            # snap re-imposes strict rank preservation and `nearly` is a
+            # silent no-op. tol stays at 1e-10: that is the snap's own
+            # exactness budget, not the caller's convergence tolerance.
+            nearly=nearly,
+            feasibility_tol=feasibility_tol,
         )
         Q = snap.Q
     except CalibrationError as exc:
