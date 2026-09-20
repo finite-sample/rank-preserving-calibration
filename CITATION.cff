@@ -6,7 +6,6 @@ abstract: "Rank-preserving calibration of multiclass probabilities via Dykstra's
 authors:
   - family-names: "Sood"
     given-names: "Gaurav"
-    email: "contact@gsood.com"
 version: "0.9.0"
 date-released: "2026-07-31"
 license: MIT
