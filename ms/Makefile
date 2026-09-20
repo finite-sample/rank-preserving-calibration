@@ -11,16 +11,16 @@ experiments:
 	cd experiments && python3 run_experiments.py
 
 paper: experiments
-	$(XELATEX) -interaction=nonstopmode ms.tex
-	$(BIBTEX) ms
-	$(XELATEX) -interaction=nonstopmode ms.tex
-	$(XELATEX) -interaction=nonstopmode ms.tex
+	$(XELATEX) -interaction=nonstopmode rank-preserving-multiclass.tex
+	$(BIBTEX) rank-preserving-multiclass
+	$(XELATEX) -interaction=nonstopmode rank-preserving-multiclass.tex
+	$(XELATEX) -interaction=nonstopmode rank-preserving-multiclass.tex
 
 draft:
-	$(XELATEX) -interaction=nonstopmode ms.tex
-	$(BIBTEX) ms
-	$(XELATEX) -interaction=nonstopmode ms.tex
-	$(XELATEX) -interaction=nonstopmode ms.tex
+	$(XELATEX) -interaction=nonstopmode rank-preserving-multiclass.tex
+	$(BIBTEX) rank-preserving-multiclass
+	$(XELATEX) -interaction=nonstopmode rank-preserving-multiclass.tex
+	$(XELATEX) -interaction=nonstopmode rank-preserving-multiclass.tex
 
 clean:
 	rm -f *.aux *.bbl *.blg *.log *.out *.toc *.lof *.lot *.fls *.fdb_latexmk *.synctex.gz

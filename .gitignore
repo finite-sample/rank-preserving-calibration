@@ -14,11 +14,11 @@ docs/_build/
 .ruff_cache/
 /ms/experiments/__pycache__
 ms/kl_theory.log
-ms/ms.aux
-ms/ms.bbl
-ms/ms.blg
-ms/ms.log
-ms/ms.out
+ms/rank-preserving-multiclass.aux
+ms/rank-preserving-multiclass.bbl
+ms/rank-preserving-multiclass.blg
+ms/rank-preserving-multiclass.log
+ms/rank-preserving-multiclass.out
 
 # Coverage data
 .coverage
