@@ -49,6 +49,7 @@ To verify your installation, run:
 
 ```python
 import rank_preserving_calibration
+
 print(rank_preserving_calibration.__version__)
 ```
 

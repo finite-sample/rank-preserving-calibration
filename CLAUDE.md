@@ -186,7 +186,11 @@ result = calibrate_two_stage(P, M)
 
 ### Diagnosing Flatness
 ```python
-from rank_preserving_calibration import flatness_metrics, marginal_shift_metrics, flatness_bound
+from rank_preserving_calibration import (
+    flatness_metrics,
+    marginal_shift_metrics,
+    flatness_bound,
+)
 
 shift = marginal_shift_metrics(P, M)  # How big is the shift?
 bound = flatness_bound(P, M)  # What flatness should we expect?
