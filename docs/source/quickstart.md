@@ -97,8 +97,12 @@ M = true_proportions * n_samples
 # Calibrate
 result = calibrate_dykstra(P, M, max_iters=5000, tol=1e-8)
 
-print(f"Original accuracy: {np.mean(P.argmax(axis=1) == np.arange(n_samples) % n_classes):.3f}")
-print(f"Rank correlation preserved: {np.corrcoef(P.max(axis=1), result.Q.max(axis=1))[0,1]:.3f}")
+print(
+    f"Original accuracy: {np.mean(P.argmax(axis=1) == np.arange(n_samples) % n_classes):.3f}"
+)
+print(
+    f"Rank correlation preserved: {np.corrcoef(P.max(axis=1), result.Q.max(axis=1))[0, 1]:.3f}"
+)
 ```
 
 ## Common Parameters
@@ -111,13 +115,7 @@ Key parameters for both algorithms:
 * `rtol`: Relative tolerance for isotonic regression (1e-12)
 
 ```python
-result = calibrate_dykstra(
-    P, M,
-    max_iters=5000,
-    tol=1e-8,
-    verbose=True,
-    rtol=1e-10
-)
+result = calibrate_dykstra(P, M, max_iters=5000, tol=1e-8, verbose=True, rtol=1e-10)
 ```
 
 ## Next Steps

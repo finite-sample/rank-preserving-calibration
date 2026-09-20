@@ -20,8 +20,8 @@ The algorithm uses Dykstra's alternating projection method in Euclidean geometry
 import numpy as np
 
 N = 3
-M = np.array([1.2, 0.9, 1.1])   # any targets
-M = M * N / M.sum()             # now sums to N exactly
+M = np.array([1.2, 0.9, 1.1])  # any targets
+M = M * N / M.sum()  # now sums to N exactly
 ```
 
 ### New: Nearly Isotonic Calibration
@@ -102,11 +102,13 @@ extras:
 import numpy as np
 from rank_preserving_calibration import calibrate
 
-P = np.array([
-    [0.6, 0.3, 0.1],
-    [0.2, 0.5, 0.3],
-    [0.1, 0.2, 0.7],
-])
+P = np.array(
+    [
+        [0.6, 0.3, 0.1],
+        [0.2, 0.5, 0.3],
+        [0.1, 0.2, 0.7],
+    ]
+)
 
 # Target column sums, e.g. population class frequencies. Must sum to the
 # number of rows (3 in this example) for perfect feasibility.
@@ -146,10 +148,11 @@ from rank_preserving_calibration import calibrate
 result = calibrate(P, M, method="dykstra", use_jit=False)
 
 result = calibrate(
-    P, M,
+    P,
+    M,
     method="dykstra",
     max_iters=5000,
-    use_jit=True,       # 2-10x speedup on the projection path
+    use_jit=True,  # 2-10x speedup on the projection path
 )
 ```
 
@@ -219,8 +222,12 @@ if y_true is not None:
 ```python
 import numpy as np
 from rank_preserving_calibration import (
-    calibrate_dykstra, feasibility_metrics, isotonic_metrics,
-    distance_metrics, nll, top_label_ece
+    calibrate_dykstra,
+    feasibility_metrics,
+    isotonic_metrics,
+    distance_metrics,
+    nll,
+    top_label_ece,
 )
 
 # Calibrate
