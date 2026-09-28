@@ -57,7 +57,7 @@ test = [
 ]
 dev = [
     { include-group = "test" },
-    "ruff==0.16.7",
+    "ruff==0.16.8",
     "pre-commit>=3.0",
     "numba>=0.56",
     "pydoclint>=0.3.0",
