@@ -121,5 +121,5 @@ result = calibrate_dykstra(P, M, max_iters=5000, tol=1e-8, verbose=True, rtol=1e
 ## Next Steps
 
 * Learn about the {doc}`theory` behind rank-preserving calibration
-* Explore detailed {doc}`examples` and use cases
+* Explore detailed {doc}`examples <examples/index>` and use cases
 * Check the full {doc}`api` reference

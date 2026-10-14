@@ -313,15 +313,7 @@ The ADMM function returns an `ADMMResult` object with additional convergence his
 
 ## Examples
 
-See our comprehensive documentation examples at [https://finite-sample.github.io/rank-preserving-calibration/examples.html](https://finite-sample.github.io/rank-preserving-calibration/examples.html):
-
-- **Medical Diagnosis**: Breast cancer risk calibration across populations
-- **Financial Risk**: Credit scoring with regulatory compliance
-- **Text Classification**: Sentiment analysis with domain adaptation
-- **Computer Vision**: OCR deployment across applications
-- **Survey Research**: Demographic reweighting for representative samples
-
-Each example uses real datasets and provides complete analysis workflows with business context and performance evaluation.
+The examples in [`docs/examples`](docs/examples) are scripts that run on every docs build and are rendered, with their output and figures, in the [documentation](https://finite-sample.github.io/rank-preserving-calibration/). Run one locally with `uv run --group docs python docs/examples/plot_label_shift.py`.
 
 ### When to Use Nearly Isotonic Calibration
 
