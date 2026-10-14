@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-14
+
+### Fixed
+- `calibrate_dykstra`'s final polishing step ignored the caller's `row_atol`
+  and `col_atol` and used its own defaults, so it could stop short of the
+  tolerances the caller asked for.
+
+### Changed
+- Package metadata: project URLs now point at the hyphenated repository name,
+  the license is declared as an SPDX expression, and the package ships a
+  `py.typed` marker.
+- The documentation examples are scripts run by sphinx-gallery on every docs
+  build, replacing four notebooks that did not run. The installation page no
+  longer lists `[examples]`, `[testing]` and `[all]` extras, which never
+  existed; the one extra is `[performance]`.
+
 ## [0.9.0] - 2026-07-31
 
 An audit against an independent convex solver. The core mathematics held; four
