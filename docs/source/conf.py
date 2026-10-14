@@ -37,7 +37,8 @@ extensions = [
     "sphinx.ext.mathjax",
     "sphinx.ext.doctest",
     "sphinx_copybutton",
-    "myst_nb",  # MyST-NB includes MyST-parser functionality
+    "myst_parser",
+    "sphinx_gallery.gen_gallery",
 ]
 
 templates_path = ["_templates"]
@@ -111,16 +112,13 @@ copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: 
 copybutton_prompt_is_regexp = True
 copybutton_remove_prompts = True
 
-# MyST-NB configuration
-# The three example notebooks under examples/ do not run end to end: two
-# reference variables that are never defined and one hits a genuine
-# non-convergence. Executing them at build time therefore produced pages of
-# tracebacks, and under `-W` it fails the build outright. Render them as
-# authored until they are repaired.
-nb_execution_mode = "off"
-nb_execution_timeout = 300  # 5 minute timeout per cell
-nb_execution_allow_errors = False  # Fail build on notebook errors
-nb_execution_in_temp = False  # Execute in source directory
+# Each example runs at build time; an example that raises fails the build.
+sphinx_gallery_conf = {
+    "examples_dirs": "../examples",
+    "gallery_dirs": "examples",
+    "filename_pattern": "/plot_",
+    "download_all_examples": False,
+}
 
 # MyST parser configuration
 myst_enable_extensions = [
@@ -136,6 +134,3 @@ myst_enable_extensions = [
     "substitution",
     "tasklist",
 ]
-
-# MyST-NB handles .ipynb files and MyST-parser handles .md files
-# No need to explicitly set source_suffix as extensions handle this

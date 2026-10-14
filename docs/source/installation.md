@@ -25,22 +25,10 @@ pip install -e .
 
 ## Optional Dependencies
 
-For running examples and notebooks:
+For faster solvers through numba:
 
 ```bash
-pip install rank_preserving_calibration[examples]
-```
-
-For development and testing:
-
-```bash
-pip install rank_preserving_calibration[testing]
-```
-
-For all optional dependencies:
-
-```bash
-pip install rank_preserving_calibration[all]
+pip install "rank_preserving_calibration[performance]"
 ```
 
 ## Verification

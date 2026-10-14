@@ -48,7 +48,7 @@ calibrated_probs = result.Q
 installation
 quickstart
 theory
-examples
+examples/index
 ```
 
 ```{toctree}

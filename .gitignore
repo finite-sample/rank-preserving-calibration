@@ -22,3 +22,5 @@ ms/rank-preserving-multiclass.out
 
 # Coverage data
 .coverage
+docs/source/examples/
+docs/source/sg_execution_times.rst

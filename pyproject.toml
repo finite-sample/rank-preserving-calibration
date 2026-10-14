@@ -63,29 +63,24 @@ dev = [
     "pydoclint>=0.3.0",
     "pyright>=1.1.0",
 ]
-examples = ["scipy>=1.0", "matplotlib>=3.0", "jupyter", "seaborn>=0.11", "scikit-learn>=1.0", "plotly>=5.0", "pandas>=1.5"]
-# myst-nb executes the notebooks under docs/source/examples during the build, so
-# the docs group carries their runtime imports (sklearn, matplotlib, seaborn,
-# plotly) as well as the Sphinx toolchain.
+# sphinx-gallery runs the scripts in docs/examples during the build, so the
+# docs group carries their imports as well as the Sphinx toolchain.
 docs = [
     "sphinx>=8",
     "furo",
-    "myst-nb>=1.0",
+    "myst-parser>=4",
+    "sphinx-gallery>=0.19",
     "sphinx-autodoc-typehints>=1.25",
     "sphinx-copybutton",
-    "jupyter",
-    "ipykernel>=6.0",
     "scikit-learn>=1.0",
     "matplotlib>=3.0",
-    "seaborn>=0.11",
-    "plotly>=5.0",
     "py-canon @ git+https://github.com/gojiplus/py-canon@v1",
 ]
 
 [tool.ruff]
 line-length = 88
 target-version = "py312"
-exclude = ["**/.*", "build/", "dist/", "venv/", ".venv/", "docs/source/examples/*.ipynb", "examples/", "ms/"]
+exclude = ["**/.*", "build/", "dist/", "venv/", ".venv/", "ms/"]
 
 [tool.ruff.lint]
 external = ["DOC"]
@@ -117,8 +112,8 @@ convention = "google"
 # N802: test names name the matrix they exercise (test_invalid_P_shape).
 "tests/**" = ["S101", "D", "ARG", "SLF", "N802"]
 "docs/**" = ["D"]
+"docs/examples/*.py" = ["D", "T201"]
 "rank_preserving_calibration/metrics.py" = ["E702", "RUF034"]  # Allow compact coding style with semicolons in metrics
-"docs/source/examples/*.ipynb" = ["E402", "B007", "F821"]  # Allow notebook-style imports and unused loop vars
 
 [tool.ruff.lint.isort]
 known-first-party = ["rank_preserving_calibration"]
@@ -133,7 +128,7 @@ known_first_party = ["rank_preserving_calibration"]
 
 [tool.deptry.per_rule_ignores]
 # Documentation dependencies are not imported in code but used for building docs
-DEP002 = ["sphinx", "furo", "sphinx-autodoc-typehints", "sphinx-copybutton", "myst-parser", "nbsphinx", "jupyter", "ipykernel", "scikit-learn", "matplotlib", "seaborn", "plotly", "pandas"]
+DEP002 = ["sphinx", "furo", "sphinx-autodoc-typehints", "sphinx-copybutton", "myst-parser", "sphinx-gallery", "scikit-learn", "matplotlib"]
 # Test dependencies used in tests directory
 DEP004 = ["pytest", "hypothesis", "pytest-cov", "cvxpy"]
 
