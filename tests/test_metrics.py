@@ -11,7 +11,6 @@ from scipy.stats import entropy, mannwhitneyu
 
 from rank_preserving_calibration import (
     auc_deltas,
-    brier,
     classwise_ece,
     column_variance,
     distance_metrics,
@@ -19,7 +18,6 @@ from rank_preserving_calibration import (
     informativeness_ratio,
     isotonic_metrics,
     kl_divergence,
-    nll,
     reverse_kl_divergence,
     sharpness_metrics,
     symmetrized_kl,
@@ -101,18 +99,6 @@ def test_distance_metrics():
     assert out["frobenius"] == pytest.approx(np.sqrt(0.02))
     assert out["mean_abs"] == pytest.approx(0.05)
     assert out["max_abs"] == pytest.approx(0.1)
-
-
-class TestScoringRules:
-    y = np.array([0, 1])
-    probs = np.array([[0.8, 0.2], [0.4, 0.6]])
-
-    def test_nll(self):
-        assert nll(self.y, self.probs) == pytest.approx(-np.log([0.8, 0.6]).mean())
-
-    def test_brier_sums_squared_error_over_classes(self):
-        # (0.2^2 + 0.2^2 + 0.4^2 + 0.4^2) / 2 rows
-        assert brier(self.y, self.probs) == pytest.approx(0.2)
 
 
 class TestECE:

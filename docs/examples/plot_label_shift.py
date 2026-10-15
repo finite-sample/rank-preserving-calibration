@@ -26,9 +26,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.datasets import load_digits
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import log_loss
 from sklearn.model_selection import train_test_split
 
-from rank_preserving_calibration import calibrate, nll
+from rank_preserving_calibration import calibrate
 
 X, y = load_digits(return_X_y=True)
 X_train, X_pool, y_train, y_pool = train_test_split(
@@ -79,8 +80,8 @@ for name, model in models.items():
     result = calibrate(P, M)
     calibrated[name] = (P, result.Q)
     print(
-        f"{name:<16} {nll(y_test, P):6.3f} {nll(y_test, R):6.3f} "
-        f"{nll(y_test, result.Q):6.3f} {reorders(P, R):9d}   "
+        f"{name:<16} {log_loss(y_test, P):6.3f} {log_loss(y_test, R):6.3f} "
+        f"{log_loss(y_test, result.Q):6.3f} {reorders(P, R):9d}   "
         f"{P[:, :3].sum():.0f} raw, {R[:, :3].sum():.0f} ratio, "
         f"{result.Q[:, :3].sum():.0f} calibrated"
     )
