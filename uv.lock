@@ -1758,7 +1758,7 @@ docs = [
     { name = "matplotlib", specifier = ">=3.0" },
     { name = "myst-parser", specifier = ">=4" },
     { name = "py-canon", git = "https://github.com/gojiplus/py-canon?rev=v1" },
-    { name = "scikit-learn", specifier = ">=1.0" },
+    { name = "scikit-learn", specifier = ">=1.7" },
     { name = "sphinx", specifier = ">=8" },
     { name = "sphinx-autodoc-typehints", specifier = ">=1.25" },
     { name = "sphinx-copybutton" },
