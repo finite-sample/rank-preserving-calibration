@@ -17,16 +17,15 @@ import numpy as np
 import pandas as pd
 from sklearn.datasets import load_digits, load_wine
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import brier_score_loss, log_loss
 from sklearn.model_selection import train_test_split
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from rank_preserving_calibration import (
     CalibrationError,
-    brier,
     calibrate_dykstra,
     isotonic_metrics,
-    nll,
     top_label_ece,
 )
 
@@ -140,8 +139,8 @@ def run_single_dataset(
                 "seed": seed,
                 "method": "original",
                 "accuracy": float(np.mean(P.argmax(axis=1) == y_shifted)),
-                "brier": brier(y_shifted, P),
-                "nll": nll(y_shifted, P),
+                "brier": brier_score_loss(y_shifted, P, labels=classes, scale_by_half=False),
+                "nll": log_loss(y_shifted, P, labels=classes),
                 "ece": top_label_ece(y_shifted, P)["ece"],
                 "rank_rate": 1.0,
                 "max_rank_violation": 0.0,
@@ -158,8 +157,8 @@ def run_single_dataset(
                 "seed": seed,
                 "method": "logit_shift",
                 "accuracy": float(np.mean(Q_logit.argmax(axis=1) == y_shifted)),
-                "brier": brier(y_shifted, Q_logit),
-                "nll": nll(y_shifted, Q_logit),
+                "brier": brier_score_loss(y_shifted, Q_logit, labels=classes, scale_by_half=False),
+                "nll": log_loss(y_shifted, Q_logit, labels=classes),
                 "ece": top_label_ece(y_shifted, Q_logit)["ece"],
                 "rank_rate": compute_rank_preservation_rate(Q_logit, P),
                 "max_rank_violation": iso_logit["max_rank_violation"],
@@ -178,8 +177,8 @@ def run_single_dataset(
                     "seed": seed,
                     "method": "rpc_strict",
                     "accuracy": float(np.mean(Q_strict.argmax(axis=1) == y_shifted)),
-                    "brier": brier(y_shifted, Q_strict),
-                    "nll": nll(y_shifted, Q_strict),
+                    "brier": brier_score_loss(y_shifted, Q_strict, labels=classes, scale_by_half=False),
+                    "nll": log_loss(y_shifted, Q_strict, labels=classes),
                     "ece": top_label_ece(y_shifted, Q_strict)["ece"],
                     "rank_rate": compute_rank_preservation_rate(Q_strict, P),
                     "max_rank_violation": iso_strict["max_rank_violation"],
@@ -215,8 +214,8 @@ def run_single_dataset(
                     "seed": seed,
                     "method": "rpc_eps_0.02",
                     "accuracy": float(np.mean(Q_eps.argmax(axis=1) == y_shifted)),
-                    "brier": brier(y_shifted, Q_eps),
-                    "nll": nll(y_shifted, Q_eps),
+                    "brier": brier_score_loss(y_shifted, Q_eps, labels=classes, scale_by_half=False),
+                    "nll": log_loss(y_shifted, Q_eps, labels=classes),
                     "ece": top_label_ece(y_shifted, Q_eps)["ece"],
                     "rank_rate": compute_rank_preservation_rate(Q_eps, P),
                     "max_rank_violation": iso_eps["max_rank_violation"],

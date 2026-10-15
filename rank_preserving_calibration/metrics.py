@@ -287,61 +287,7 @@ def distance_metrics(Q: np.ndarray, P: np.ndarray) -> dict[str, float]:
     }
 
 
-# ---------- Proper scoring & calibration (labels required) ----------
-
-
-def nll(y: np.ndarray, probs: np.ndarray) -> float:
-    """Compute negative log-likelihood (cross-entropy loss).
-
-    Args:
-        y: True class labels as integers of shape (N,).
-        probs: Probability matrix of shape (N, J).
-
-    Returns:
-        Average negative log-likelihood across all instances.
-
-    Examples:
-        >>> import numpy as np
-        >>> from rank_preserving_calibration import nll
-        >>> y = np.array([0, 1, 2])
-        >>> probs = np.array([[0.8, 0.1, 0.1], [0.2, 0.7, 0.1], [0.1, 0.2, 0.7]])
-        >>> loss = nll(y, probs)
-        >>> print(f"NLL: {loss:.4f}")
-        NLL: 0.3122
-    """
-    y = np.asarray(y, dtype=np.int64)
-    probs = np.asarray(probs, dtype=np.float64)
-    return float(-np.mean(_safe_log(probs[np.arange(len(y)), y])))
-
-
-def brier(y: np.ndarray, probs: np.ndarray) -> float:
-    """Compute Brier score for multiclass classification.
-
-    The Brier score measures the mean squared difference between predicted
-    probabilities and one-hot encoded true labels. Lower is better.
-
-    Args:
-        y: True class labels as integers of shape (N,).
-        probs: Probability matrix of shape (N, J).
-
-    Returns:
-        Brier score (mean squared error).
-
-    Examples:
-        >>> import numpy as np
-        >>> from rank_preserving_calibration import brier
-        >>> y = np.array([0, 1, 2])
-        >>> probs = np.array([[0.8, 0.1, 0.1], [0.2, 0.7, 0.1], [0.1, 0.2, 0.7]])
-        >>> score = brier(y, probs)
-        >>> print(f"Brier score: {score:.4f}")
-        Brier score: 0.1133
-    """
-    y = np.asarray(y, dtype=np.int64)
-    probs = np.asarray(probs, dtype=np.float64)
-    N, _J = probs.shape
-    oh = np.zeros_like(probs)
-    oh[np.arange(N), y] = 1.0
-    return float(np.mean(np.sum((oh - probs) ** 2, axis=1)))
+# ---------- Calibration error (labels required) ----------
 
 
 def top_label_ece(y: np.ndarray, probs: np.ndarray, n_bins: int = 15) -> dict:

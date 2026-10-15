@@ -78,7 +78,6 @@ from .kl_nearly import (
 # Public API: KL divergence metrics
 from .metrics import (
     auc_deltas,
-    brier,
     classwise_ece,
     column_variance,
     distance_metrics,
@@ -86,7 +85,6 @@ from .metrics import (
     informativeness_ratio,
     isotonic_metrics,
     kl_divergence,
-    nll,
     reverse_kl_divergence,
     sharpness_metrics,
     symmetrized_kl,
@@ -129,7 +127,6 @@ __all__ = [
     "SoftCalibrationResult",
     "TwoStageResult",
     "auc_deltas",
-    "brier",
     "calibrate",
     "calibrate_admm",
     "calibrate_dykstra",
@@ -154,7 +151,6 @@ __all__ = [
     "isotonic_metrics",
     "kl_divergence",
     "marginal_shift_metrics",
-    "nll",
     "project_near_isotonic_euclidean",
     "project_near_kl_isotonic",
     "prox_kl_near_isotonic",

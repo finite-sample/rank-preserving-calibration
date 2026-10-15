@@ -72,7 +72,8 @@ docs = [
     "sphinx-gallery>=0.19",
     "sphinx-autodoc-typehints>=1.25",
     "sphinx-copybutton",
-    "scikit-learn>=1.0",
+    # Multiclass brier_score_loss arrived in 1.7.
+    "scikit-learn>=1.7",
     "matplotlib>=3.0",
     "py-canon @ git+https://github.com/gojiplus/py-canon@v1",
 ]

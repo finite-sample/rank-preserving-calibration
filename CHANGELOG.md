@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `classwise_ece(balanced=...)`. It weighted bins, not classes, so it did not
   do what it said.
 - Two compiled helpers that nothing called.
+- `nll` and `brier`. They duplicated `sklearn.metrics.log_loss` and
+  `sklearn.metrics.brier_score_loss(..., scale_by_half=False)`, which give the
+  same numbers.
 
 ## [0.9.1] - 2026-10-14
 
