@@ -73,7 +73,6 @@ The package projects probability matrices onto the intersection of:
 ### Extended Metrics (metrics.py)
 - `column_variance(Q)`: Per-column variance of calibrated probabilities
 - `informativeness_ratio(Q, P)`: Compare Q vs P variance (measures flattening)
-- `brier(y, probs)`: Brier score for multiclass classification
 - `top_label_ece(y, probs)`: Expected calibration error for top predictions
 - `classwise_ece(y, probs)`: Per-class calibration error analysis
 - `sharpness_metrics(probs)`: Prediction confidence and entropy analysis

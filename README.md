@@ -185,7 +185,9 @@ print(f"Violation mass: {isotonic['total_violation_mass']}")
 
 ```python
 import numpy as np
-from rank_preserving_calibration import distance_metrics, nll, brier
+from sklearn.metrics import log_loss
+
+from rank_preserving_calibration import distance_metrics
 
 # True class labels for the three rows above, if you have them.
 y_true = np.array([0, 1, 2])
@@ -197,8 +199,8 @@ print(f"Max change: {distances['max_abs']}")
 
 # Evaluate with labeled data (if available)
 if y_true is not None:
-    original_nll = nll(y_true, P)
-    calibrated_nll = nll(y_true, result.Q)
+    original_nll = log_loss(y_true, P)
+    calibrated_nll = log_loss(y_true, result.Q)
     print(f"NLL improvement: {original_nll - calibrated_nll}")
 ```
 
@@ -210,12 +212,14 @@ if y_true is not None:
 | `isotonic_metrics(Q, P)` | Check rank preservation and measure violations |
 | `distance_metrics(Q, P)` | Quantify changes between original and calibrated probabilities |
 | `tie_group_variance(Q, P)` | Assess handling of tied predictions (useful for `ties='group'`) |
-| `nll(y, probs)` | Negative log-likelihood (requires true labels) |
-| `brier(y, probs)` | Brier score (requires true labels) |
 | `top_label_ece(y, probs)` | Expected calibration error for top predictions |
 | `classwise_ece(y, probs)` | Per-class calibration error analysis |
 | `sharpness_metrics(probs)` | Prediction confidence and entropy analysis |
 | `auc_deltas(y, P, Q)` | One-vs-rest AUC changes after calibration |
+
+For log loss and the Brier score, use `sklearn.metrics.log_loss` and
+`sklearn.metrics.brier_score_loss`; this package only adds the metrics
+that are specific to calibration.
 
 ### Complete Evaluation Workflow
 
@@ -226,7 +230,6 @@ from rank_preserving_calibration import (
     feasibility_metrics,
     isotonic_metrics,
     distance_metrics,
-    nll,
     top_label_ece,
 )
 
