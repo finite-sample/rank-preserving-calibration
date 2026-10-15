@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `ties="group"` returned garbage from `calibrate_dykstra` and `calibrate_admm`.
+  The weighted isotonic step expanded each pooled block by its weight instead
+  of its element count, writing past the end of the output. ADMM also passed
+  `ties="stable"` to its final projection whatever the caller asked for. Both
+  now match an independent QP solution.
+- `calibrate_ovr_isotonic` was off by up to 0.31 whenever scores tied, from the
+  same weighted isotonic bug. It now matches scikit-learn's
+  `IsotonicRegression` exactly.
+- `calibrate_soft_admm` weighted the marginal penalty by `lam_m / N` instead
+  of `lam_m`.
+- `calibrate_soft` used a fixed step past the stable limit and could oscillate
+  between simplex corners, emptying whole classes. The step is now capped at
+  1/L.
+- `calibrate_ipf` reported `converged=True` when its columns missed `M`.
+- `calibrate_kl_pareto` returned an empty frontier on malformed input instead
+  of raising.
 - `classwise_ece` returned the sum of the per-class ECEs instead of their mean,
   so it was too large by a factor of the number of classes. It now follows
   Kull et al. (2019), eq. 4.

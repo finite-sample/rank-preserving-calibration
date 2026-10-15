@@ -148,6 +148,7 @@ check-yield-types = true
 # which is always near 100% and hides the package's real number.
 [tool.coverage.run]
 source = ["rank_preserving_calibration"]
+branch = true
 
 [tool.pytest.ini_options]
 markers = [
