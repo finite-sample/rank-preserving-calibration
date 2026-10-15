@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `classwise_ece(balanced=...)`. It weighted bins, not classes, so it did not
   do what it said.
 - Two compiled helpers that nothing called.
+- The `[performance]` extra, Numba, and the `use_jit` argument. The row-simplex
+  projection is now vectorised in numpy, which is about 5x faster than the
+  Numba version was and 80x faster than the old pure-Python fallback.
 - `nll` and `brier`. They duplicated `sklearn.metrics.log_loss` and
   `sklearn.metrics.brier_score_loss(..., scale_by_half=False)`, which give the
   same numbers.

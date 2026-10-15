@@ -84,15 +84,10 @@ by lowering the isotonic bound rather than by penalising violations.
 
 ```bash
 pip install rank-preserving-calibration
-
-# For JIT acceleration of the numpy-only Dykstra path
-pip install rank-preserving-calibration[performance]
 ```
 
-Runtime dependencies are `numpy`, `scipy` and `clarabel` (Apache-2.0, ~2.5 MB). Optional
-extras:
-- `[performance]`: Adds `numba` (JIT compilation)
-- Examples require `matplotlib`
+Runtime dependencies are `numpy`, `scipy` and `clarabel` (Apache-2.0, ~2.5 MB). The
+examples also need `matplotlib` and `scikit-learn`.
 
 ## Usage
 
@@ -138,28 +133,6 @@ result = calibrate(P, M, method="admm", nearly={"mode": "lambda", "lam": 1.0})
 ```
 
 The returned `CalibrationResult` contains the calibrated matrix `Q` with the same shape as `P`. Each row of `Q` sums to one, the column sums match `M`, and within each column the entries are sorted in non-decreasing order according to the order implied by the original `P`.
-
-### Performance Features
-
-```python
-from rank_preserving_calibration import calibrate
-
-# JIT acceleration applies to the numpy-only Dykstra path, not the QP solver.
-result = calibrate(P, M, method="dykstra", use_jit=False)
-
-result = calibrate(
-    P,
-    M,
-    method="dykstra",
-    max_iters=5000,
-    use_jit=True,  # 2-10x speedup on the projection path
-)
-```
-
-With the `[performance]` extras installed:
-- **JIT Compilation**: Automatically accelerates hot loops using Numba
-- **Progress Bars**: Shows calibration progress with iteration count, convergence metrics, and ETA
-- Typical speedup: 2-3x for moderate problems (N=500, J=10), up to 10x for larger problems
 
 ## Evaluation and Metrics
 
