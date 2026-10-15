@@ -12,7 +12,6 @@ import pytest
 
 from rank_preserving_calibration import (
     CalibrationError,
-    calibrate_admm,
     calibrate_dykstra,
 )
 
@@ -147,35 +146,6 @@ class TestTiesHandling:
         except CalibrationError:
             # Convergence failure is acceptable
             pass
-
-    def test_ties_with_admm_consistency(self):
-        """Test that ADMM handles ties consistently."""
-        P = np.array(
-            [
-                [0.3, 0.7],
-                [0.3, 0.7],  # Tie with row 0
-                [0.6, 0.4],
-            ]
-        )
-        M = np.array([1.2, 1.8])
-
-        # ADMM should be deterministic
-        results = []
-        for _ in range(3):
-            try:
-                result = calibrate_admm(P, M, max_iters=500, tol=1e-8)
-                results.append(result.Q)
-            except CalibrationError:
-                # With a strict tolerance and limited iterations, convergence
-                # failure is acceptable.
-                pass
-
-        # All runs that converged should give identical results
-        if len(results) >= 2:
-            for i in range(1, len(results)):
-                assert np.allclose(results[0], results[i], atol=1e-10), (
-                    f"ADMM not deterministic with ties: run 0 vs {i}"
-                )
 
 
 class TestBoundaryConditions:

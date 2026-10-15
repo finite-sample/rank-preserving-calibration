@@ -6,7 +6,7 @@ This section contains the complete API documentation for the rank_preserving_cal
 
 ```{eval-rst}
 .. automodule:: rank_preserving_calibration.calibration
-   :members: calibrate_dykstra, calibrate_admm
+   :members: calibrate_dykstra
    :undoc-members:
    :show-inheritance:
 ```
@@ -15,13 +15,6 @@ This section contains the complete API documentation for the rank_preserving_cal
 
 ```{eval-rst}
 .. autoclass:: rank_preserving_calibration.calibration.CalibrationResult
-   :members:
-   :undoc-members:
-   :show-inheritance:
-```
-
-```{eval-rst}
-.. autoclass:: rank_preserving_calibration.calibration.ADMMResult
    :members:
    :undoc-members:
    :show-inheritance:

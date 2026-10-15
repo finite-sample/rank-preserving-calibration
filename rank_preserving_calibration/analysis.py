@@ -267,7 +267,7 @@ def compare_calibration_methods(
     """Compare multiple calibration results on flatness and constraint satisfaction.
 
     Useful for deciding which calibration approach is best for a given problem
-    by comparing solutions from different methods (Dykstra, ADMM, soft, two-stage).
+    by comparing solutions from different methods (QP, Dykstra, soft, two-stage).
 
     Args:
         P: Original probability matrix.

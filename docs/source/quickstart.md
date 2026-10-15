@@ -46,20 +46,6 @@ else:
     print(f"Algorithm did not converge (change: {result.final_change:.2e})")
 ```
 
-## Alternative Algorithm: ADMM
-
-You can also use the ADMM algorithm, which provides convergence history:
-
-```python
-from rank_preserving_calibration import calibrate_admm
-
-result = calibrate_admm(P, M, verbose=True)
-
-# ADMM result includes convergence history
-print(f"Primal residuals: {result.primal_residuals[-5:]}")  # Last 5 values
-print(f"Dual residuals: {result.dual_residuals[-5:]}")
-```
-
 ## Nearly Isotonic Calibration
 
 For more flexible calibration that allows small violations of isotonic constraints:
@@ -69,9 +55,10 @@ For more flexible calibration that allows small violations of isotonic constrain
 nearly_params = {"mode": "epsilon", "eps": 0.05}
 result = calibrate_dykstra(P, M, nearly=nearly_params)
 
-# Lambda-penalty approach (experimental)
-nearly_params = {"mode": "lambda", "lam": 1.0}
-result = calibrate_admm(P, M, nearly=nearly_params)
+# Penalise rank violations instead of bounding them
+from rank_preserving_calibration import calibrate_soft
+
+result = calibrate_soft(P, M, lam_m=100.0, lam_r=1.0)
 ```
 
 ## Working with Real Data
@@ -107,10 +94,10 @@ print(
 
 ## Common Parameters
 
-Key parameters for both algorithms:
+Key parameters for Dykstra's method:
 
-* `max_iters`: Maximum iterations (3000 for Dykstra, 1000 for ADMM)
-* `tol`: Convergence tolerance (1e-7 for Dykstra, 1e-6 for ADMM)
+* `max_iters`: Maximum iterations (default 3000)
+* `tol`: Convergence tolerance (default 1e-7)
 * `verbose`: Print progress information
 * `rtol`: Relative tolerance for isotonic regression (1e-12)
 

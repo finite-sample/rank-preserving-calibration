@@ -1,6 +1,6 @@
 """The recommended entry point, dispatching to the right solver.
 
-Three solvers exist and they solve the same convex problem. The differences are
+Two solvers exist and they solve the same convex problem. The differences are
 practical rather than mathematical:
 
 ``qp``
@@ -12,22 +12,13 @@ practical rather than mathematical:
     reference implementation the QP path is tested against. Correct, but the
     iteration count grows superlinearly: 159 iterations at ``N=25``, 6,982 at
     ``N=100``, and past 60,000 at ``N=200``.
-``admm``
-    Augmented Lagrangian, then a projection. Retained for its residual
-    diagnostics; it offers no accuracy or speed advantage.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .calibration import (
-    ADMMResult,
-    CalibrationError,
-    CalibrationResult,
-    calibrate_admm,
-    calibrate_dykstra,
-)
+from .calibration import CalibrationError, CalibrationResult, calibrate_dykstra
 from .qp import calibrate_qp
 
 if TYPE_CHECKING:
@@ -35,7 +26,7 @@ if TYPE_CHECKING:
 
 __all__ = ["calibrate"]
 
-_METHODS = ("auto", "qp", "dykstra", "admm")
+_METHODS = ("auto", "qp", "dykstra")
 
 
 def calibrate(
@@ -45,7 +36,7 @@ def calibrate(
     method: str = "auto",
     nearly: dict | None = None,
     **kwargs,
-) -> CalibrationResult | ADMMResult:
+) -> CalibrationResult:
     """Calibrate a probability matrix, preserving within-class rankings.
 
     Finds the matrix closest to ``P`` in Frobenius norm whose rows are
@@ -59,8 +50,8 @@ def calibrate(
         M: Target column sums of shape (J,). Must sum to ``N``; rows summing to 1
             fix the grand total, so any other value is infeasible. Rescale with
             ``M = M * N / M.sum()``.
-        method: ``"auto"`` (default, currently ``"qp"``), ``"qp"``, ``"dykstra"``
-            or ``"admm"``. See the module docstring for the trade-offs.
+        method: ``"auto"`` (default, currently ``"qp"``), ``"qp"`` or
+            ``"dykstra"``. See the module docstring for the trade-offs.
         nearly: None for strict rank preservation, or
             ``{"mode": "epsilon", "eps": e}`` to permit adjacent decreases of at
             most ``e``. Worth reaching for above the size where the exact solve
@@ -68,8 +59,7 @@ def calibrate(
         **kwargs: Passed through to the chosen solver.
 
     Returns:
-        CalibrationResult (or ADMMResult for ``method="admm"``) holding the
-        calibrated matrix and its diagnostics.
+        CalibrationResult holding the calibrated matrix and its diagnostics.
 
     Raises:
         CalibrationError: If ``method`` is unknown, the inputs are invalid, or
@@ -98,10 +88,6 @@ def calibrate(
     if method not in _METHODS:
         raise CalibrationError(f"method must be one of {_METHODS}, got {method!r}")
 
-    resolved = "qp" if method == "auto" else method
-
-    if resolved == "qp":
-        return calibrate_qp(P, M, nearly=nearly, **kwargs)
-    if resolved == "dykstra":
+    if method == "dykstra":
         return calibrate_dykstra(P, M, nearly=nearly, **kwargs)
-    return calibrate_admm(P, M, nearly=nearly, **kwargs)
+    return calibrate_qp(P, M, nearly=nearly, **kwargs)

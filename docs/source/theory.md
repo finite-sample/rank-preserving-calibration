@@ -60,22 +60,6 @@ where $\lambda$ is chosen so that $\sum_j \max(0, x_j - \lambda) = 1$.
 
 Uses the Pool Adjacent Violators (PAV) algorithm to find the isotonic regression that minimizes squared distance while satisfying the sum constraint.
 
-### ADMM Optimization
-
-The Alternating Direction Method of Multipliers (ADMM) formulates the problem with auxiliary variables and Lagrange multipliers.
-
-**Augmented Lagrangian:**
-
-$$L_\rho(Q, Z, \Lambda) = \frac{1}{2}\|Q - P\|_F^2 + \Lambda^T(AQ - b) + \frac{\rho}{2}\|AQ - b\|_2^2$$
-
-where $A$ encodes the linear constraints and $b$ the target values.
-
-**Algorithm:**
-
-1. $Q$-update: Solve the quadratic subproblem
-2. $Z$-update: Apply isotonic projections
-3. $\Lambda$-update: Dual variable update
-
 ## Nearly Isotonic Calibration
 
 Strict isotonic constraints can be overly restrictive. We provide two relaxation approaches:
@@ -88,13 +72,13 @@ $$Q_{i_1,j} \leq Q_{i_2,j} + \epsilon \text{ if } P_{i_1,j} \leq P_{i_2,j}$$
 
 This maintains convexity and uses Euclidean projection onto the relaxed constraint set.
 
-### Lambda-Penalty Approach
+### Penalised Violations
 
-Add a penalty term for violations:
+`calibrate_soft` penalises violations instead of bounding them, and softens the marginals too:
 
-$$\min_Q \frac{1}{2}\|Q - P\|_F^2 + \lambda \sum_{j,i_1,i_2} \max(0, Q_{i_1,j} - Q_{i_2,j})$$
+$$\min_Q \frac{1}{2}\|Q - P\|_F^2 + \frac{\lambda_m}{2}\|Q^T\mathbf{1} - M\|^2 + \lambda_r \sum_j \sum_i \max(0, Q_{(i),j} - Q_{(i+1),j})$$
 
-where the sum is over pairs with $P_{i_1,j} \leq P_{i_2,j}$.
+with each row of $Q$ on the simplex, where $Q_{(i),j}$ is column $j$ in the order of $P$'s column $j$. It is solved by ADMM on the splits $Q = Z$ (simplex projection) and $Q = Y$ (the exact proximal operator of the penalty, per column). `calibrate_kl_soft` is the same idea with $\mathrm{KL}(Q\|R)$ in place of the squared error and hard marginals, solved exactly as an exponential-cone program.
 
 ## Convergence Properties
 
@@ -103,15 +87,12 @@ where the sum is over pairs with $P_{i_1,j} \leq P_{i_2,j}$.
 - Each iteration maintains feasibility of the most recent constraint, so no finite iterate satisfies *both* sets exactly — every sweep ends on a column projection, which perturbs the row sums. Convergence tolerances are therefore absolute and achievable (default $10^{-8}$) rather than aspirational.
 - **The iteration count grows superlinearly in $N$.** Measured at $J = 4$ with feasible targets: 159 iterations at $N = 25$, 533 at $N = 50$, 6,982 at $N = 100$, and past 60,000 at $N = 200$. For context, a general-purpose QP solver handles the $N = 100$ case exactly in 0.06s against Dykstra's 5.4s. Treat $N$ in the low hundreds as the practical ceiling for the exact projection, and use the $\varepsilon$-relaxation above that.
 
-**ADMM:**
-- The $Q$-update is the exact minimiser of the augmented Lagrangian. Stationarity gives $Q + \rho (Q\mathbf{1})\mathbf{1}^T + \rho \mathbf{1}(Q^T\mathbf{1})^T = R$, which closes in the row sums, column sums and grand total, so the update needs no linear system and stays $O(NJ)$.
-- After the iterations the result is projected onto the constraint set with Dykstra. If that projection does not converge, `calibrate_admm` raises rather than returning the raw ADMM iterate: that iterate is not a projection, and its objective can sit *below* the true optimum precisely because it is infeasible.
-- Convergence rate depends on penalty parameter $\rho$
-- Provides primal and dual residual tracking
-
 **Nearly Isotonic:**
 - Epsilon-slack: Maintains theoretical guarantees of Dykstra's method
-- Lambda-penalty: Convergence depends on penalty parameter choice
+- Penalised violations (`calibrate_soft`): ADMM with exact proximal steps, stopped on primal and dual residuals; checked against an independent convex solver
+
+**KL calibration:**
+- `calibrate_kl_soft` is an exponential-cone program solved by an interior-point method. `calibrate_kl` solves the same program at a penalty weight large enough that the minimiser has no rank violations; because the penalised problem relaxes the constrained one, a violation-free penalised minimiser is the constrained minimiser. Posing the isotonic constraints directly stalls the solver when many are active at once.
 
 ## Computational Complexity
 
@@ -123,7 +104,6 @@ where the sum is over pairs with $P_{i_1,j} \leq P_{i_2,j}$.
 **Memory Requirements:**
 - $O(NJ)$ for probability matrices
 - Dykstra's method: Additional $O(NJ)$ for memory terms
-- ADMM: Additional storage for auxiliary variables and dual variables
 
 ## Numerical Considerations
 

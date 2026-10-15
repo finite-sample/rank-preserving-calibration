@@ -10,7 +10,6 @@ from rank_preserving_calibration import (
     calibrate_kl,
     calibrate_kl_pareto,
     calibrate_soft,
-    calibrate_soft_admm,
     calibrate_two_stage,
     compare_calibration_methods,
     flatness_bound,
@@ -25,10 +24,6 @@ from rank_preserving_calibration.calibration import (
     _project_column_isotonic_sum,
     _run_lengths_of_equals,
 )
-from rank_preserving_calibration.kl_calibration import (
-    _kl_isotonic_regression,
-    _project_column_kl_isotonic_sum,
-)
 from rank_preserving_calibration.kl_nearly import (
     _kl_pav_increasing,
     project_near_kl_isotonic,
@@ -36,10 +31,7 @@ from rank_preserving_calibration.kl_nearly import (
 )
 from rank_preserving_calibration.metrics import classwise_ece
 from rank_preserving_calibration.nearly import _pav_increasing
-from rank_preserving_calibration.soft_calibration import (
-    _compute_rank_penalty,
-    _soft_isotonic_projection,
-)
+from rank_preserving_calibration.soft_calibration import _compute_rank_penalty
 
 Y = np.array([3.0, 1.0, 1.0, 2.0, 0.5, 0.5, 4.0, 3.5])
 W = np.array([0.5, 1.5, 2.25, 1.0, 0.1, 3.0, 0.7, 1.2])
@@ -57,30 +49,26 @@ class TestPAVVariants:
         expected = isotonic_regression(Y, weights=W).x
         np.testing.assert_allclose(_pav_increasing(Y, W), expected, atol=1e-12)
 
-    @pytest.mark.parametrize("pav", [_pav_increasing, _kl_isotonic_regression])
     @pytest.mark.parametrize(
         ("w", "message"), [(np.ones(3), "same shape"), (-W, "positive")]
     )
-    def test_reject_bad_weights(self, pav, w, message):
+    def test_reject_bad_weights(self, w, message):
         with pytest.raises(ValueError, match=message):
-            pav(Y, w)
+            _pav_increasing(Y, w)
 
     def test_kl_pav_is_geometric_pooling(self):
         # Constant z = c on a block minimises sum(z log(z / y) - z + y) at
         # log c = weighted mean of log y, so the KL fit is PAV in log space.
         expected = np.exp(isotonic_regression(np.log(Y), weights=W).x)
-        np.testing.assert_allclose(_kl_isotonic_regression(Y, W), expected)
         np.testing.assert_allclose(_kl_pav_increasing(Y, W), expected)
 
     @pytest.mark.parametrize(
         "fit",
         [
             _pav_increasing,
-            _kl_isotonic_regression,
             _kl_pav_increasing,
             lambda y: prox_near_isotonic(y, 1.0),
             lambda y: prox_kl_near_isotonic(y, 1.0),
-            lambda y: _soft_isotonic_projection(y, 1.0),
         ],
     )
     def test_single_element_is_returned_unchanged(self, fit):
@@ -151,33 +139,31 @@ class TestColumnProjections:
         empty = np.array([])
         order = np.array([], dtype=np.int64)
         assert _project_column_isotonic_sum(empty, order, 0.0).size == 0
-        assert _project_column_kl_isotonic_sum(empty, order, 0.0).size == 0
-
-    def test_kl_column_of_zeros_is_spread_evenly(self):
-        Q = _project_column_kl_isotonic_sum(np.zeros(4), np.arange(4), 2.0, eps=1e-300)
-        np.testing.assert_allclose(Q, 0.5)
 
 
 class TestSolverEdges:
-    def test_calibrate_kl_raises_when_out_of_iterations(self):
+    def test_calibrate_kl_raises_on_infeasible_targets(self):
         P, M = _problem()
-        with pytest.raises(CalibrationError, match="KL calibration failed"):
-            calibrate_kl(P, M, max_iters=1)
+        with (
+            pytest.warns(UserWarning, match="must equal N"),
+            pytest.raises(CalibrationError, match="status"),
+        ):
+            calibrate_kl(P, M * 1.1)
 
     def test_pareto_uses_the_given_grid_in_order(self):
         P, M = _problem()
-        with pytest.warns(UserWarning, match="did not converge"):
-            result = calibrate_kl_pareto(P, M, lambda_grid=[10.0, 0.1], max_iters=5)
+        result = calibrate_kl_pareto(P, M, lambda_grid=[10.0, 0.1])
         assert result.lambda_path == [0.1, 10.0]
 
     def test_soft_warns_when_targets_are_far_from_n(self):
         P, M = _problem()
         with pytest.warns(UserWarning, match="differs significantly"):
-            calibrate_soft(P, M * 1.5, max_iters=5)
+            calibrate_soft(P, M * 1.5)
 
-    def test_soft_admm_reports_an_unconverged_run(self):
+    def test_soft_warns_and_reports_an_unconverged_run(self):
         P, M = _problem()
-        assert not calibrate_soft_admm(P, M, max_iters=1).converged
+        with pytest.warns(UserWarning, match="did not converge"):
+            assert not calibrate_soft(P, M, max_iters=1).converged
 
     def test_ipf_and_two_stage_report_an_unconverged_run(self):
         P, M = _problem()
@@ -185,12 +171,6 @@ class TestSolverEdges:
         result = calibrate_two_stage(P, M, ipf_max_iters=1, proj_max_iters=1)
         assert not result.converged
         assert result.projection_iterations == 1
-
-    def test_soft_isotonic_projection_limits(self):
-        np.testing.assert_array_equal(_soft_isotonic_projection(Y, 0.0), Y)
-        np.testing.assert_allclose(
-            _soft_isotonic_projection(Y, 1e6), isotonic_regression(Y).x
-        )
 
     def test_rank_penalty_ignores_single_row_columns(self):
         assert _compute_rank_penalty(np.ones((1, 2)), [np.zeros(1, int)] * 2) == 0.0

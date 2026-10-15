@@ -88,7 +88,7 @@ def calibrate_ipf(
     - Row scaling: Ensure rows sum to 1 (probability simplex)
     - Column scaling: Scale columns to match target marginals M
 
-    Unlike Dykstra/ADMM, IPF preserves the relative structure of probabilities
+    Unlike Dykstra, IPF preserves the relative structure of probabilities
     within rows (ratios between classes). This can produce less "flat" solutions
     but may not perfectly satisfy all constraints simultaneously.
 

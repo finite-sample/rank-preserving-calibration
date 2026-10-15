@@ -15,7 +15,6 @@ from hypothesis import strategies as st
 
 from rank_preserving_calibration import (
     CalibrationError,
-    calibrate_admm,
     calibrate_dykstra,
 )
 
@@ -135,65 +134,6 @@ class TestDykstraProperties:
                     )
 
 
-class TestADMMProperties:
-    """Test fundamental properties of ADMM algorithm."""
-
-    @given(data=generate_calibration_problem())
-    @settings(max_examples=8, deadline=None)
-    def test_admm_constraint_satisfaction(self, data):
-        """Test that ADMM satisfies constraints after polishing."""
-        P, M = data
-
-        # Skip extreme cases
-        if np.any(M / len(P) > 1.3) or np.any(M / len(P) < 0.3):
-            return
-
-        try:
-            result = calibrate_admm(P, M, max_iters=300, tol=1e-6, verbose=False)
-
-            # ADMM includes final polishing, so constraints should be well satisfied
-            row_errors = np.abs(result.Q.sum(axis=1) - 1.0)
-            col_errors = np.abs(result.Q.sum(axis=0) - M)
-
-            assert np.all(row_errors < 1e-1), (
-                f"ADMM row constraints: max error {np.max(row_errors)}"
-            )
-            assert np.all(col_errors < 1e-3), (
-                f"ADMM column constraints: max error {np.max(col_errors)}"
-            )
-        except CalibrationError:
-            # With challenging cases and limited iterations, convergence failure
-            # is acceptable.
-            pass
-
-    def test_admm_vs_dykstra_consistency_sample(self):
-        """Test that ADMM and Dykstra give reasonably consistent results."""
-        test_cases = [
-            (np.array([[0.6, 0.4], [0.3, 0.7], [0.5, 0.5]]), np.array([1.2, 1.8])),
-            (
-                np.array([[0.4, 0.3, 0.3], [0.2, 0.5, 0.3], [0.5, 0.2, 0.3]]),
-                np.array([1.1, 1.0, 0.9]),
-            ),
-        ]
-
-        for P, M in test_cases:
-            try:
-                result_dykstra = calibrate_dykstra(P, M, max_iters=500, verbose=False)
-                result_admm = calibrate_admm(P, M, max_iters=300, verbose=False)
-
-                # Results should be in similar ballpark
-                distance = np.linalg.norm(result_dykstra.Q - result_admm.Q, "fro")
-                reference_scale = np.linalg.norm(P, "fro")
-
-                assert distance < 0.5 * reference_scale, (
-                    f"Dykstra and ADMM too different: distance = {distance}, "
-                    f"scale = {reference_scale}"
-                )
-            except CalibrationError:
-                # With limited iterations, one or both algorithms may not converge
-                pass
-
-
 class TestAlgorithmicInvariants:
     """Test important algorithmic invariants that should always hold."""
 
@@ -211,17 +151,6 @@ class TestAlgorithmicInvariants:
             )
             assert np.all(result_dykstra.Q <= 2.0), (
                 "Dykstra produced unreasonably large values"
-            )
-        except CalibrationError:
-            # With limited iterations, convergence failure is acceptable
-            pass
-
-        # Test ADMM
-        try:
-            result_admm = calibrate_admm(P, M, max_iters=100, verbose=False)
-            assert np.isfinite(result_admm.Q).all(), "ADMM produced non-finite values"
-            assert np.all(result_admm.Q <= 2.0), (
-                "ADMM produced unreasonably large values"
             )
         except CalibrationError:
             # With limited iterations, convergence failure is acceptable

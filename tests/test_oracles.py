@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from scipy.optimize import isotonic_regression
 
-from rank_preserving_calibration import calibrate_admm, calibrate_dykstra
+from rank_preserving_calibration import calibrate_dykstra
 from rank_preserving_calibration.calibration import (
     _isotonic_regression,
     _project_row_simplex,
@@ -125,16 +125,8 @@ class TestGroupedTies:
         P, _ = self._problem()
         assert all(len(np.unique(P[:, j])) < len(P) for j in range(P.shape[1]))
 
-    @pytest.mark.parametrize("solver", [calibrate_dykstra, calibrate_admm])
-    def test_matches_qp(self, solver):
+    def test_matches_qp(self):
         P, M = self._problem()
         expected = self._oracle(P, M)
-        Q = solver(P, M, ties="group", max_iters=20000, tol=1e-10).Q
+        Q = calibrate_dykstra(P, M, ties="group", max_iters=20000, tol=1e-10).Q
         np.testing.assert_allclose(Q, expected, atol=1e-6)
-
-    def test_admm_differs_from_stable(self):
-        """Guards the regression where ADMM's final snap ignored ties="group"."""
-        P, M = self._problem()
-        stable = calibrate_admm(P, M, ties="stable").Q
-        group = calibrate_admm(P, M, ties="group").Q
-        assert np.abs(stable - group).max() > 1e-3

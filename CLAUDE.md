@@ -6,10 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `rank_preserving_calibration` is a Python package for rank-preserving calibration of multiclass probabilities. It implements several algorithms:
 
-1. **Dykstra's alternating projections** (`calibrate_dykstra`) - recommended default method
-2. **ADMM optimization** (`calibrate_admm`) - alternative solver with convergence history
-3. **KL-divergence calibration** (`calibrate_kl`) - KL-based loss instead of Euclidean
-4. **Soft calibration** (`calibrate_soft`) - tunable trade-offs between constraints
+1. **Sparse QP** (`calibrate_qp`, the default behind `calibrate`) - exact, interior point
+2. **Dykstra's alternating projections** (`calibrate_dykstra`) - numpy-only reference implementation
+3. **KL-divergence calibration** (`calibrate_kl`, `calibrate_kl_soft`) - exponential-cone programs
+4. **Soft calibration** (`calibrate_soft`) - penalised marginals and rank violations, ADMM with exact prox
 5. **Two-stage IPF** (`calibrate_two_stage`) - IPF followed by isotonic projection
 
 The package projects probability matrices onto the intersection of:
@@ -19,7 +19,7 @@ The package projects probability matrices onto the intersection of:
 ## Code Architecture
 
 ### Core Module Structure
-- `rank_preserving_calibration/calibration.py`: Main algorithms and result classes (Dykstra, ADMM)
+- `rank_preserving_calibration/calibration.py`: Dykstra, validation, and result classes
 - `rank_preserving_calibration/kl_calibration.py`: KL-divergence calibration algorithms
 - `rank_preserving_calibration/kl_nearly.py`: Nearly isotonic utilities for KL geometry
 - `rank_preserving_calibration/soft_calibration.py`: Soft constraint calibration
@@ -33,9 +33,7 @@ The package projects probability matrices onto the intersection of:
 
 ### Key Classes and Functions
 - `calibrate_dykstra(P, M, **kwargs)`: Main calibration function using Dykstra's method
-- `calibrate_admm(P, M, **kwargs)`: Alternative ADMM-based calibration
 - `CalibrationResult`: Standard result object with calibrated matrix Q and diagnostics
-- `ADMMResult`: ADMM-specific result with convergence history
 - `CalibrationError`: Custom exception for invalid inputs
 
 ### KL Calibration (kl_calibration.py)
@@ -55,8 +53,7 @@ The package projects probability matrices onto the intersection of:
 - `prox_near_isotonic_with_sum(v, lam, sum_target)`: Prox with sum constraint
 
 ### Soft Calibration (soft_calibration.py)
-- `calibrate_soft(P, M, lam_m, lam_r)`: Gradient descent with soft penalties
-- `calibrate_soft_admm(P, M, lam_m, lam_r, rho)`: ADMM version with better convergence
+- `calibrate_soft(P, M, lam_m, lam_r, rho)`: ADMM with the exact prox of the rank penalty
 - `SoftCalibrationResult`: Result dataclass with objective breakdown
 
 ### Two-Stage IPF Calibration (two_stage.py)
@@ -82,9 +79,9 @@ The package projects probability matrices onto the intersection of:
 - Dykstra's method uses alternating projections with memory terms (U, V arrays)
 - Row projections use numerically stable simplex projection algorithm
 - Column projections use Pool Adjacent Violators (PAV) isotonic regression
-- KL calibration uses geometric mean pooling and multiplicative rescaling
+- KL calibration is an exponential-cone program (Clarabel); `calibrate_kl` is the
+  penalised program at a weight certified large enough to leave no rank violations
 - Cycle detection available for Dykstra's method
-- ADMM uses augmented Lagrangian with penalty parameter rho
 
 ## Development Commands
 
@@ -235,14 +232,12 @@ result = calibrate_dykstra(P, M, nearly=nearly_params)
 - Uses Euclidean projection onto convex slack constraint set
 - Maintains convergence guarantees of Dykstra's method
 
-### Lambda-Penalty Approach (ADMM)
+### Penalised Violations (`calibrate_soft`)
 ```python
-nearly_params = {"mode": "lambda", "lam": 1.0}
-result = calibrate_admm(P, M, nearly=nearly_params)
+result = calibrate_soft(P, M, lam_m=100.0, lam_r=1.0)
 ```
 - Penalizes isotonicity violations with λ * sum(max(0, z[i] - z[i+1]))
-- Uses proximal operator for soft isotonic constraint
-- Experimental - may require parameter tuning
+- `nearly` accepts only `{"mode": "epsilon"}`; any other mode raises
 
 ## Important Implementation Notes
 
@@ -254,18 +249,17 @@ result = calibrate_admm(P, M, nearly=nearly_params)
 
 ### Nearly Isotonic Notes
 - Epsilon-slack maintains convexity and theoretical guarantees
-- Lambda-penalty approach is more experimental and may need tuning
-- Both approaches can be less restrictive than strict isotonic constraints
+- Penalised violations live in `calibrate_soft`, a different objective, not a `nearly` mode
 
 
 ### Common Parameter Patterns
 - `P`: Input probability matrix (N×J)
 - `M`: Target column sums (length J)
-- `max_iters`: Algorithm iteration limits (3000 for Dykstra, 1000 for ADMM)
-- `tol`: Convergence tolerances (1e-7 for Dykstra, 1e-6 for ADMM)
+- `max_iters`: Algorithm iteration limits (3000 for Dykstra, 5000 for calibrate_soft)
+- `tol`: Convergence tolerances (1e-7 for Dykstra, 1e-8 for calibrate_soft, 1e-10 solver tolerance for KL)
 - `verbose`: Progress printing flag
 - `rtol`: Relative tolerance for isotonic regression (1e-12)
-- `nearly`: Dict with "mode" ("epsilon" or "lambda") and parameters
+- `nearly`: `{"mode": "epsilon", "eps": e}`
 
 ## Documentation
 
@@ -321,6 +315,8 @@ files in `.github/workflows/` are thin shims that pass this repo's inputs.
   PyPI through trusted publishing with PEP 740 attestations.
 
 ### Local Development
+- CI's lint job also runs `uvx --from pydoclint==0.9.1 pydoclint rank_preserving_calibration`,
+  which `preen check` does not
 - Use `uv` for dependency management
 - Run `uv run ruff format .` before committing
 - Run `uv run pytest tests/ -v` to verify changes

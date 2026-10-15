@@ -45,40 +45,12 @@ from .calibration import (
     CalibrationError,
     CalibrationResult,
     _compute_rank_violation,
+    _epsilon_from,
     _validate_inputs,
     is_feasible,
 )
 
 __all__ = ["calibrate_qp"]
-
-
-def _epsilon_from(nearly: dict | None) -> float:
-    """Read the isotonic slack out of a ``nearly`` specification.
-
-    Args:
-        nearly: None for a strict isotonic constraint, or
-            ``{"mode": "epsilon", "eps": float}`` to permit adjacent decreases
-            of at most ``eps``.
-
-    Returns:
-        The permitted decrease, 0.0 for the strict constraint.
-
-    Raises:
-        CalibrationError: If the mode is unsupported or ``eps`` is negative.
-    """
-    if nearly is None:
-        return 0.0
-    mode = nearly.get("mode")
-    if mode != "epsilon":
-        raise CalibrationError(
-            f"calibrate_qp supports nearly={{'mode': 'epsilon', ...}}; got mode="
-            f"{mode!r}. The lambda-penalty mode changes the objective rather than "
-            "the constraint set, so it is not a projection; use calibrate_admm."
-        )
-    eps = float(nearly.get("eps", 1e-3))
-    if eps < 0.0:
-        raise CalibrationError(f"eps must be non-negative, got {eps}")
-    return eps
 
 
 def _build_constraints(P: np.ndarray, M: np.ndarray, eps: float):

@@ -29,15 +29,13 @@ M = M * N / M.sum()  # now sums to N exactly
 This package now supports **nearly isotonic** constraints that allow small violations of strict monotonicity when appropriate:
 
 - **Epsilon-slack constraints**: Allow z[i+1] ≥ z[i] - ε instead of strict z[i+1] ≥ z[i]
-- **Lambda-penalty approach**: Penalize isotonicity violations with a tunable parameter
+- **Penalised rank violations**: `calibrate_soft` (squared error) and `calibrate_kl_soft` (KL divergence) charge λ per unit of downward step instead of forbidding it
 
 These relaxed constraints can provide better balance between rank preservation and probability calibration when strict isotonic constraints are too restrictive.
 
-An **ADMM optimization** implementation is also provided as an alternative solver that minimizes `||Q - P||²` subject to the same constraints.
-
 ## Which solver?
 
-`calibrate()` picks for you, and the default is right in every case measured. The three
+`calibrate()` picks for you, and the default is right in every case measured. The two
 are mathematically equivalent — they solve the same convex problem, and the test suite
 asserts they agree — so the choice is practical:
 
@@ -45,7 +43,6 @@ asserts they agree — so the choice is practical:
 |---|---|---|
 | `"qp"` (default) | sparse quadratic program, interior point | always |
 | `"dykstra"` | alternating projections, numpy only | reference implementation; useful if you cannot take the solver dependency |
-| `"admm"` | augmented Lagrangian, then projection | when you want primal/dual residual traces |
 
 The default is not a close call. Measured at `J=4` on feasible targets:
 
@@ -127,9 +124,11 @@ from rank_preserving_calibration import calibrate
 # Epsilon-slack: allow small rank violations (recommended above N ~ 6400)
 result = calibrate(P, M, nearly={"mode": "epsilon", "eps": 0.05})
 
-# Lambda-penalty: soft isotonic constraint, ADMM only (it changes the
-# objective rather than the constraint set, so it is not a projection)
-result = calibrate(P, M, method="admm", nearly={"mode": "lambda", "lam": 1.0})
+# Penalise rank violations instead of bounding them. This changes the
+# objective, not the constraint set, so it lives in its own function.
+from rank_preserving_calibration import calibrate_soft
+
+result = calibrate_soft(P, M, lam_m=100.0, lam_r=1.0)
 ```
 
 The returned `CalibrationResult` contains the calibrated matrix `Q` with the same shape as `P`. Each row of `Q` sums to one, the column sums match `M`, and within each column the entries are sorted in non-decreasing order according to the order implied by the original `P`.
@@ -234,9 +233,13 @@ if y_true is not None:
 
 Calibrate using Dykstra's alternating projections (recommended). Supports both strict and nearly isotonic constraints.
 
-### `calibrate_admm(P, M, **kwargs)`
+### `calibrate_soft(P, M, lam_m, lam_r)`
 
-Calibrate using ADMM optimization with penalty parameter `rho`. Supports lambda-penalty nearly isotonic constraints.
+Minimise `0.5||Q - P||² + 0.5·lam_m·||Qᵀ1 - M||² + lam_r·Σ(downward steps)` with rows on the simplex, by ADMM with exact proximal steps.
+
+### `calibrate_kl(P, M, R=None, A=None)` and `calibrate_kl_soft(P, M, lam, R=None, A=None)`
+
+Minimise KL divergence from a reference `R` with ranks taken from an anchor `A`, either strictly or with a λ penalty; both are solved exactly as exponential-cone programs.
 
 ### `create_test_case(case_type, N, J, **kwargs)` (in `tests.data_helpers`)
 
@@ -248,17 +251,16 @@ Generate synthetic test data for various scenarios used in testing.
 | --- | --- | --- |
 | `P` | `ndarray` of shape `[N, J]` | Base multiclass probabilities or non-negative scores. Rows will be projected to the simplex. |
 | `M` | `ndarray` of shape `[J]` | Target column totals (e.g. population class frequencies). The sum of `M` should equal the number of rows `N` for exact feasibility. |
-| `max_iters` | `int` | Maximum number of projection iterations (default `3000` for Dykstra, `1000` for ADMM). |
-| `tol` | `float` | Relative convergence tolerance (default `1e-7` for Dykstra, `1e-6` for ADMM). |
+| `max_iters` | `int` | Maximum number of projection iterations (Dykstra, default `3000`). |
+| `tol` | `float` | Relative convergence tolerance (Dykstra, default `1e-7`). |
 | `verbose` | `bool` | If `True`, prints convergence diagnostics. |
-| `nearly` | `dict` | Nearly isotonic parameters: `{"mode": "epsilon", "eps": 0.05}` or `{"mode": "lambda", "lam": 1.0}`. |
-| `rho` | `float` | ADMM penalty parameter (default `1.0`, ADMM only). |
+| `nearly` | `dict` | Nearly isotonic slack: `{"mode": "epsilon", "eps": 0.05}`. Any other mode raises. |
 
 ## Returns
 
 ### CalibrationResult
 
-Both functions return a `CalibrationResult` object with the following attributes:
+`calibrate`, `calibrate_qp` and `calibrate_dykstra` return a `CalibrationResult` object with the following attributes:
 
 * `Q`: NumPy array of shape `[N, J]` containing the calibrated probabilities. Each row sums to one, each column approximately sums to the corresponding entry of `M`, and within each column the values are non-decreasing according to the ordering induced by `P`.
 * `converged`: boolean indicating whether the solver met the tolerance criteria.
@@ -268,24 +270,13 @@ Both functions return a `CalibrationResult` object with the following attributes
 * `max_rank_violation`: maximum violation of monotonicity (should be 0 up to numerical tolerance).
 * `final_change`: final relative change between iterations.
 
-### ADMMResult
-
-The ADMM function returns an `ADMMResult` object with additional convergence history:
-
-* All `CalibrationResult` attributes plus:
-* `objective_values`: objective function values over iterations.
-* `primal_residuals`: primal residual norms over iterations.
-* `dual_residuals`: dual residual norms over iterations.
-
 ## Algorithm Notes
 
 * **Dykstra's Method**: Uses alternating projections with memory terms to ensure convergence to the intersection of constraint sets. Rows are projected onto the simplex via the algorithm of Duchi et al., and columns are projected via the pool-adjacent-violators algorithm followed by an additive shift to match column totals. This is the recommended method for most applications.
 
 * **Nearly Isotonic Extensions**:
   - **Epsilon-slack (Dykstra)**: Projects onto the convex set {z : z[i+1] ≥ z[i] - ε} using coordinate transformation. Maintains theoretical convergence guarantees.
-  - **Lambda-penalty (ADMM)**: Uses proximal operator to minimize ||Q - P||² + λ∑max(0, z[i] - z[i+1]). More experimental but provides soft constraints.
-
-* **ADMM**: Solves the constrained optimization problem using the Alternating Direction Method of Multipliers. May converge faster for some problems but requires tuning the penalty parameter `rho`. The algorithm minimizes the sum of squared differences `0.5 * ||Q - P||²_F` subject to the calibration constraints.
+  - **Rank penalty (`calibrate_soft`)**: Minimises 0.5||Q - P||² + λ∑max(0, z[i] - z[i+1]) per column, alongside a marginal penalty, with the exact proximal operator of the penalty inside ADMM. Checked against an independent convex solver.
 
 ## Examples
 

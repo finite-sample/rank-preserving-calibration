@@ -7,13 +7,10 @@ import pytest
 
 from rank_preserving_calibration import (
     CalibrationError,
-    calibrate,
-    calibrate_admm,
     calibrate_dykstra,
     calibrate_kl,
     calibrate_qp,
     calibrate_soft,
-    calibrate_soft_admm,
 )
 from rank_preserving_calibration.calibration import logger
 
@@ -55,24 +52,47 @@ class TestSoftSolversAgainstQP:
         )
         return Q.value
 
-    @pytest.mark.parametrize("solver", [calibrate_soft, calibrate_soft_admm])
+    @staticmethod
+    def _penalised_oracle(P, M, lam_m, lam_r):
+        N, J = P.shape
+        Q = cp.Variable((N, J))
+        orders = [np.argsort(P[:, j], kind="mergesort") for j in range(J)]
+        rank = sum(
+            cp.sum(cp.pos(Q[o[:-1], j] - Q[o[1:], j])) for j, o in enumerate(orders)
+        )
+        objective = (
+            0.5 * cp.sum_squares(Q - P)
+            + 0.5 * lam_m * cp.sum_squares(cp.sum(Q, axis=0) - M)
+            + lam_r * rank
+        )
+        cp.Problem(cp.Minimize(objective), [Q >= 0, cp.sum(Q, axis=1) == 1]).solve(
+            solver=cp.CLARABEL, tol_gap_abs=1e-12, tol_gap_rel=1e-12
+        )
+        return Q.value
+
     @pytest.mark.parametrize("lam_m", [1.0, 10.0])
-    def test_no_rank_penalty(self, solver, lam_m):
-        # Guards two bugs: soft ADMM weighted the marginal term by lam_m / N,
-        # and soft gradient descent used a step past 1/L and oscillated
-        # between simplex corners.
+    def test_no_rank_penalty(self, lam_m):
+        # Guards the lam_m / N weighting the ADMM column update used to apply.
         P, M = _problem()
-        Q = solver(P, M, lam_m=lam_m, lam_r=0.0, max_iters=50000, tol=1e-12).Q
+        Q = calibrate_soft(P, M, lam_m=lam_m, lam_r=0.0, tol=1e-12).Q
         np.testing.assert_allclose(Q, self._oracle(P, M, lam_m), atol=1e-7)
 
-    def test_admm_large_rank_penalty_is_hard_isotonic(self):
+    @pytest.mark.parametrize("lam_r", [0.01, 0.1, 1.0])
+    def test_moderate_rank_penalty(self, lam_r):
+        # The rank step used to be ten subgradient iterations; at lam_r = 1 it
+        # stopped at an objective of 0.548 against an optimum of 0.290 while
+        # reporting convergence.
         P, M = _problem()
-        Q = calibrate_soft_admm(
-            P, M, lam_m=1.0, lam_r=1e6, max_iters=50000, tol=1e-12
-        ).Q
+        Q = calibrate_soft(P, M, lam_m=1.0, lam_r=lam_r).Q
+        expected = self._penalised_oracle(P, M, 1.0, lam_r)
+        np.testing.assert_allclose(Q, expected, atol=1e-6)
+
+    def test_large_rank_penalty_is_hard_isotonic(self):
+        P, M = _problem()
+        Q = calibrate_soft(P, M, lam_m=1.0, lam_r=1e3).Q
         expected = self._oracle(P, M, 1.0, isotonic=True)
         np.testing.assert_allclose(Q, expected, atol=1e-6)
-        assert _rank_violation(Q, P) < 1e-9
+        assert _rank_violation(Q, P) < 1e-7
 
 
 class TestDykstraPaths:
@@ -106,27 +126,6 @@ class TestDykstraPaths:
         assert logger.level == logging.WARNING
 
 
-class TestADMMPaths:
-    def test_rejects_unknown_ties(self):
-        P, M = _problem(N=10)
-        with pytest.raises(ValueError, match="ties"):
-            calibrate_admm(P, M, ties="average")
-
-    def test_raises_rather_than_return_an_unconverged_iterate(self):
-        P, M = _problem(N=10)
-        with (
-            pytest.warns(UserWarning, match="ADMM failed to converge"),
-            pytest.raises(CalibrationError, match="failed to converge after 1"),
-        ):
-            calibrate_admm(P, M, max_iters=1, verbose=True)
-
-    def test_calibrate_dispatches_to_admm(self):
-        P, M = _problem(N=10)
-        np.testing.assert_array_equal(
-            calibrate(P, M, method="admm").Q, calibrate_admm(P, M).Q
-        )
-
-
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
@@ -153,5 +152,6 @@ def test_kl_zero_target_class_gets_zero_mass():
     M[2] = 0.0
     M *= 20 / M.sum()
     Q = calibrate_kl(P, M).Q
-    np.testing.assert_allclose(Q[:, 2], 0.0, atol=1e-12)
+    # Interior-point: zero to solver precision, not bit-exact.
+    np.testing.assert_allclose(Q[:, 2], 0.0, atol=1e-9)
     np.testing.assert_allclose(Q.sum(axis=0), M, atol=1e-8)

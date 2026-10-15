@@ -1,8 +1,8 @@
 """Rank-preserving calibration of multiclass probabilities.
 
 This package provides robust implementations of rank-preserving calibration
-algorithms including Dykstra's alternating projections (exact intersection)
-and ADMM (penalty-based with final snap to the exact projection).
+algorithms: an exact sparse QP, Dykstra's alternating projections, KL-divergence
+variants, and soft-penalty trade-offs.
 
 Quick start
 -----------
@@ -50,10 +50,8 @@ from .analysis import (
 # Public API: recommended entry point and the exact QP solver
 from .api import calibrate
 from .calibration import (
-    ADMMResult,
     CalibrationError,
     CalibrationResult,
-    calibrate_admm,
     calibrate_dykstra,
     is_feasible,
 )
@@ -105,7 +103,6 @@ from .qp import calibrate_qp
 from .soft_calibration import (
     SoftCalibrationResult,
     calibrate_soft,
-    calibrate_soft_admm,
 )
 
 # Public API: two-stage IPF-based calibration
@@ -118,7 +115,6 @@ from .two_stage import (
 
 # What gets imported with: from rank_preserving_calibration import *
 __all__ = [
-    "ADMMResult",
     "CalibrationError",
     "CalibrationResult",
     "IPFResult",
@@ -128,7 +124,6 @@ __all__ = [
     "TwoStageResult",
     "auc_deltas",
     "calibrate",
-    "calibrate_admm",
     "calibrate_dykstra",
     "calibrate_ipf",
     "calibrate_kl",
@@ -137,7 +132,6 @@ __all__ = [
     "calibrate_ovr_isotonic",
     "calibrate_qp",
     "calibrate_soft",
-    "calibrate_soft_admm",
     "calibrate_two_stage",
     "classwise_ece",
     "column_variance",

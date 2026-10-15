@@ -1,7 +1,7 @@
 """Robust rank-preserving multiclass probability calibration.
 
 This module provides numerically stable implementations of rank-preserving
-calibration algorithms including Dykstra's alternating projections and ADMM.
+calibration by Dykstra's alternating projections.
 """
 
 from __future__ import annotations
@@ -14,10 +14,7 @@ from typing import Any
 
 import numpy as np
 
-from .nearly import (
-    project_near_isotonic_euclidean,  # epsilon-slack, with exact sum shift
-    prox_near_isotonic,  # lambda-penalty (exact prox if provided version)
-)
+from .nearly import project_near_isotonic_euclidean
 
 type NDArrayFloat = np.ndarray[Any, np.dtype[np.floating[Any]]]
 type ColumnOrders = list[np.ndarray]
@@ -90,35 +87,6 @@ class CalibrationResult:
     final_change: float
 
 
-@dataclass(slots=True)
-class ADMMResult:
-    """Result from ADMM optimization.
-
-    Attributes:
-        Q: Calibrated probability matrix.
-        converged: Whether ADMM converged.
-        iterations: Number of iterations performed.
-        objective_values: Objective function values over iterations.
-        primal_residuals: Primal residual norms over iterations.
-        dual_residuals: Dual residual norms over iterations.
-        max_row_error: Maximum row sum error.
-        max_col_error: Maximum column sum error.
-        max_rank_violation: Maximum rank violation.
-        final_change: Final relative change between iterations.
-    """
-
-    Q: np.ndarray
-    converged: bool
-    iterations: int
-    objective_values: list[float]
-    primal_residuals: list[float]
-    dual_residuals: list[float]
-    max_row_error: float
-    max_col_error: float
-    max_rank_violation: float
-    final_change: float
-
-
 class CalibrationError(Exception):
     """Raised when calibration fails due to invalid inputs or numerical issues."""
 
@@ -173,6 +141,35 @@ def _validate_arrays(P: np.ndarray, M: np.ndarray) -> tuple[int, int]:
             raise CalibrationError("M must contain non-negative values")
 
     return N, J
+
+
+def _epsilon_from(nearly: dict | None) -> float:
+    """Read the isotonic slack out of a ``nearly`` specification.
+
+    Args:
+        nearly: None for a strict isotonic constraint, or
+            ``{"mode": "epsilon", "eps": float}`` to permit adjacent decreases
+            of at most ``eps``.
+
+    Returns:
+        The permitted decrease, 0.0 for the strict constraint.
+
+    Raises:
+        CalibrationError: If the mode is unsupported or ``eps`` is negative.
+    """
+    if nearly is None:
+        return 0.0
+    mode = nearly.get("mode")
+    if mode != "epsilon":
+        raise CalibrationError(
+            f"nearly supports only {{'mode': 'epsilon', 'eps': ...}}; got mode="
+            f"{mode!r}. To penalise rank violations instead of bounding them, "
+            "use calibrate_soft."
+        )
+    eps = float(nearly.get("eps", 1e-3))
+    if eps < 0.0:
+        raise CalibrationError(f"eps must be non-negative, got {eps}")
+    return eps
 
 
 def _validate_inputs(
@@ -645,6 +642,7 @@ def calibrate_dykstra(
     """
     _configure_logging(verbose)
     _, J = _validate_inputs(P, M, max_iters, tol, feasibility_tol)
+    _epsilon_from(nearly)
     if ties not in ("stable", "group"):
         raise ValueError(f"ties must be 'stable' or 'group', got '{ties}'")
 
@@ -765,326 +763,6 @@ def calibrate_dykstra(
         Q=Q,
         converged=converged,
         iterations=iteration,
-        max_row_error=max_row_error,
-        max_col_error=max_col_error,
-        max_rank_violation=max_rank_violation,
-        final_change=final_change,
-    )
-
-
-# ---------------------------------------------------------------------
-# ADMM calibration (penalty-based, snaps to exact projection)
-# ---------------------------------------------------------------------
-
-
-def calibrate_admm(
-    P: np.ndarray,
-    M: np.ndarray,
-    rho: float = 1.0,
-    max_iters: int = 1000,
-    tol: float = 1e-6,
-    rtol: float = 0.0,
-    feasibility_tol: float = 0.1,
-    verbose: bool = False,
-    nearly: dict | None = None,
-    ties: str = "stable",
-) -> ADMMResult:
-    """Calibrate using ADMM-style optimization with penalty methods.
-
-    An alternative to Dykstra's projections that handles row/column sum constraints via
-    Lagrange multipliers and rank-preservation through either strict isotonic regression
-    or lambda-penalty nearly-isotonic proximal operators.
-
-    The algorithm minimizes ||Q - P||² subject to constraint sets using an augmented
-    Lagrangian approach. For final optimality verification, the solution is snapped
-    to the exact intersection using a short Dykstra polish.
-
-    Args:
-        P: Input probability matrix of shape (N, J). Each row represents predicted class
-            probabilities for one instance. Rows need not sum to 1 initially.
-        M: Target column sums of shape (J,). Should sum to approximately N for
-            feasibility.
-        rho: ADMM penalty parameter. Larger values enforce constraints more
-            aggressively.
-            Default 1.0 works well for most problems.
-        max_iters: Maximum number of iterations. Default 1000 is usually sufficient.
-        tol: Convergence tolerance for primal/dual residuals. Default 1e-6.
-        rtol: Relative tolerance for isotonic violations in PAV. Default 0.0 (strict).
-        feasibility_tol: Tolerance for feasibility warnings when sum(M) differs from N.
-        verbose: If True, enables debug logging.
-        nearly: Optional dict for nearly-isotonic constraints. Use
-            {"mode": "lambda", "lam": 1.0} for the lambda-penalty approach,
-            allowing soft isotonicity violations.
-        ties: How to handle tied scores. "stable" preserves input order, "group" pools
-            equal-score instances.
-
-    Returns:
-        ADMMResult object containing:
-            - Q: Calibrated probability matrix of shape (N, J)
-            - converged: Always True (failures raise CalibrationError instead)
-            - iterations: Number of iterations performed
-            - max_row_error: Maximum absolute row sum error
-            - max_col_error: Maximum absolute column sum error
-            - max_rank_violation: Maximum rank order violation
-            - final_change: Final relative change in solution
-            - objective_values: List of objective function values per iteration
-            - primal_residuals: List of primal residual norms per iteration
-            - dual_residuals: List of dual residual norms per iteration
-
-    Raises:
-        CalibrationError: If inputs are invalid, the algorithm fails to converge,
-            or other errors occur.
-        ValueError: If ties parameter is not "stable" or "group"
-
-    Examples:
-        Basic ADMM calibration:
-
-        >>> import numpy as np
-        >>> from rank_preserving_calibration import calibrate_admm
-        >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
-        >>> M = np.array([0.8, 0.8, 0.4])
-        >>> result = calibrate_admm(P, M)
-        >>> print(f"Converged: {result.converged}")
-        Converged: True
-
-        With lambda-penalty for soft isotonicity:
-
-        >>> result = calibrate_admm(P, M, nearly={"mode": "lambda", "lam": 2.0})
-
-        Adjusting penalty parameter:
-
-        >>> result = calibrate_admm(P, M, rho=5.0)  # Stronger constraint enforcement
-
-    Notes:
-        - Often converges faster than Dykstra for well-conditioned problems
-        - Provides convergence diagnostics via objective and residual histories
-        - Lambda-penalty mode allows trading off isotonicity for fit quality
-        - Final solution is snapped to exact feasible set for optimality
-        - Experimental: may need parameter tuning for difficult problems
-    """
-    _configure_logging(verbose)
-    N, J = _validate_inputs(P, M, max_iters, tol, feasibility_tol)
-    if ties not in ("stable", "group"):
-        raise ValueError(f"ties must be 'stable' or 'group', got '{ties}'")
-
-    P = np.asarray(P, dtype=np.float64)
-    M = np.asarray(M, dtype=np.float64)
-
-    # Precompute column orders once (stable)
-    column_orders = [np.argsort(P[:, j], kind="mergesort") for j in range(J)]
-    score_sorted: list[np.ndarray | None] = (
-        [P[ord_j, j] for j, ord_j in enumerate(column_orders)]
-        if ties == "group"
-        else [None] * J
-    )
-
-    # Initialize ADMM variables
-    Q = P.copy()
-    Z1 = np.ones(N)  # row-sum auxiliaries
-    Z2 = M.copy()  # col-sum auxiliaries
-    lambda1 = np.zeros(N)  # row multipliers
-    lambda2 = np.zeros(J)  # col multipliers
-
-    objective_values: list[float] = []
-    primal_residuals: list[float] = []
-    dual_residuals: list[float] = []
-
-    # Initialize lambda penalty using match
-    match nearly:
-        case {"mode": "lambda", **rest}:
-            lam_pen = float(rest.get("lam", 1.0))
-        case _:
-            lam_pen = None
-
-    converged = False
-    iteration = 0
-    Q_prev = Q.copy()
-    for iteration in range(max_iters):
-        Q_prev = Q.copy()
-
-        # Q-update: exact minimiser of
-        #     0.5||Q - P||_F^2 + (rho/2)||Q 1_J - a||^2 + (rho/2)||Q^T 1_N - b||^2
-        # with a = Z1 - lambda1/rho and b = Z2 - lambda2/rho.
-        #
-        # The previous version computed (P + rho*(a[:, None] + b[None, :])) /
-        # (1 + 2*rho), which pulls every ELEMENT toward the row target and the
-        # column target. But a[i] targets the row *sum* and b[j] the column
-        # *sum*, so that update drove each row toward J*(1 + M_j)/2 rather than
-        # 1. It could not satisfy its own constraints for any rho, and
-        # calibrate_admm failed on problems as small as N=25.
-        #
-        # Stationarity gives Q + rho (Q 1)1^T + rho 1(Q^T 1)^T = R, which closes
-        # in the row sums, column sums and grand total, so the exact solution
-        # needs no linear system and stays O(NJ).
-        a_vec = Z1 - lambda1 / rho
-        b_vec = Z2 - lambda2 / rho
-        R = P + rho * a_vec.reshape(-1, 1) + rho * b_vec.reshape(1, -1)
-        s_tot = float(R.sum()) / (1.0 + rho * J + rho * N)
-        r_vec = (R.sum(axis=1) - rho * s_tot) / (1.0 + rho * J)
-        c_vec = (R.sum(axis=0) - rho * s_tot) / (1.0 + rho * N)
-        Q_unconstrained = R - rho * r_vec.reshape(-1, 1) - rho * c_vec.reshape(1, -1)
-
-        # Rank-preserving + nonnegativity
-        if lam_pen is not None:
-            for j in range(J):
-                idx = column_orders[j]
-                v_sorted = Q_unconstrained[idx, j]
-                # prox_near_isotonic's rho and max_iters belong to the inner
-                # ADMM that solves the prox subproblem. They are not this
-                # function's outer penalty and iteration budget, and forcing
-                # those in would change the prox itself.
-                Q_unconstrained[idx, j] = (
-                    prox_near_isotonic(  # preen: allow-dropped-arg
-                        v_sorted, lam_pen
-                    )
-                )
-        else:
-            for j in range(J):
-                idx = column_orders[j]
-                v_sorted = Q_unconstrained[idx, j]
-                score_j = score_sorted[j]
-                if ties == "group" and score_j is not None:
-                    lens = _run_lengths_of_equals(score_j)
-                    pos = 0
-                    y_group = np.empty(lens.size, dtype=np.float64)
-                    for g, L in enumerate(lens):
-                        y_group[g] = float(np.mean(v_sorted[pos : pos + L]))
-                        pos += int(L)
-                    z_group = _isotonic_regression(
-                        y_group,
-                        rtol=rtol,
-                        ties="stable",
-                        weights=lens.astype(np.float64),
-                    )
-                    v_sorted[:] = np.repeat(z_group, lens)
-                else:
-                    v_sorted[:] = _isotonic_regression(
-                        v_sorted, rtol=rtol, ties="stable"
-                    )
-
-        Q = np.maximum(Q_unconstrained, 0.0)
-
-        # Z-updates (hard equality constraints)
-        row_sums = Q.sum(axis=1)
-        col_sums = Q.sum(axis=0)
-
-        Z1_prev = Z1.copy()
-        Z2_prev = Z2.copy()
-
-        Z1 = np.ones(N)  # enforce row sums = 1
-        Z2 = M.copy()  # enforce col sums = M
-
-        # Multiplier updates
-        lambda1 += rho * (row_sums - Z1)
-        lambda2 += rho * (col_sums - Z2)
-
-        # Residuals & objective (include λ-penalty term if used)
-        primal_res = np.linalg.norm(np.concatenate([row_sums - Z1, col_sums - Z2]))
-        dual_res = rho * (np.linalg.norm(Z1 - Z1_prev) + np.linalg.norm(Z2 - Z2_prev))
-
-        obj_val = 0.5 * np.linalg.norm(Q - P) ** 2
-        if lam_pen is not None:
-            pen = 0.0
-            for j in range(J):
-                idx = column_orders[j]
-                qj = Q[idx, j]
-                pen += float(np.maximum(qj[:-1] - qj[1:], 0.0).sum())
-            obj_val += lam_pen * pen
-
-        objective_values.append(float(obj_val))
-        primal_residuals.append(float(primal_res))
-        dual_residuals.append(float(dual_res))
-
-        if iteration % 100 == 0:
-            logger.debug(
-                "ADMM iter %d: obj=%.3e, primal=%.3e, dual=%.3e",
-                iteration,
-                obj_val,
-                primal_res,
-                dual_res,
-            )
-
-        if primal_res < tol and dual_res < tol:
-            converged = True
-            break
-
-    if not converged and verbose:
-        warnings.warn(
-            f"ADMM failed to converge after {max_iters} iterations",
-            UserWarning,
-            stacklevel=2,
-        )
-
-    # Final change (w.r.t. last iterate in the loop)
-    if iteration > 0:
-        final_change = float(
-            np.linalg.norm(Q - Q_prev) / (1.0 + np.linalg.norm(Q_prev))
-        )
-    else:
-        final_change = float("inf")
-
-    # Snap to the exact projection (guarantees distance optimality over feasible set)
-    try:
-        # The snap is what makes the returned matrix an actual projection, so it
-        # gets a budget proportional to the problem rather than a flat 1500 --
-        # Dykstra's iteration count grows superlinearly in N, and a fixed budget
-        # silently became inadequate somewhere above N=25.
-        snap = calibrate_dykstra(
-            P,
-            M,
-            max_iters=max(1500, 200 * N),
-            tol=1e-10,
-            rtol=0.0,
-            verbose=False,
-            detect_cycles=False,
-            ties=ties,
-            # The snap's Q is what gets returned, so a caller asking for a
-            # nearly-isotonic relaxation has to reach it -- otherwise the
-            # snap re-imposes strict rank preservation and `nearly` is a
-            # silent no-op. tol stays at 1e-10: that is the snap's own
-            # exactness budget, not the caller's convergence tolerance.
-            nearly=nearly,
-            feasibility_tol=feasibility_tol,
-        )
-        Q = snap.Q
-    except CalibrationError as exc:
-        # Never fall back silently. The ADMM iterate is not a projection onto the
-        # constraint set: its objective can sit *below* the true optimum precisely
-        # because it is infeasible. Returning it while reporting converged=True
-        # hands back a matrix that violates the guarantee this package exists for
-        # -- measured at 27 rank violations on a 25-row problem -- with no signal
-        # at the default verbosity.
-        raise CalibrationError(
-            "ADMM converged but the final projection onto the constraint set did "
-            f"not: {exc}. The raw ADMM iterate is not rank-preserving and is not "
-            "returned. Use calibrate_dykstra directly, raise max_iters, or relax "
-            "the isotonic constraint with nearly={'mode': 'epsilon', 'eps': 0.01}."
-        ) from exc
-
-    # Diagnostics
-    row_sums = Q.sum(axis=1)
-    col_sums = Q.sum(axis=0)
-    max_row_error = float(np.max(np.abs(row_sums - 1.0)))
-    max_col_error = float(np.max(np.abs(col_sums - M)))
-    max_rank_violation = _compute_rank_violation(Q, P)
-
-    # Fail fast on non-convergence instead of returning unreliable results
-    if not converged:
-        raise CalibrationError(
-            f"ADMM calibration failed to converge after {iteration + 1} iterations. "
-            f"Final primal residual: {primal_residuals[-1]:.2e}, "
-            f"dual residual: {dual_residuals[-1]:.2e} (tolerance: {tol:.2e}). "
-            f"Try: increasing max_iters, adjusting rho parameter, relaxing tol, "
-            f"or consider Dykstra's method with nearly-isotonic constraints."
-        )
-
-    return ADMMResult(
-        Q=Q,
-        converged=converged,
-        iterations=iteration + 1,
-        objective_values=objective_values,
-        primal_residuals=primal_residuals,
-        dual_residuals=dual_residuals,
         max_row_error=max_row_error,
         max_col_error=max_col_error,
         max_rank_violation=max_rank_violation,

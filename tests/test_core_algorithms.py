@@ -1,7 +1,7 @@
 """
 Core algorithm test suite for rank_preserving_calibration package.
 
-Tests basic functionality of Dykstra and ADMM algorithms, input validation,
+Tests basic functionality of Dykstra's algorithm, input validation,
 and core algorithm behavior. This consolidates basic smoke tests and ensures
 the fundamental algorithms work correctly.
 
@@ -12,10 +12,8 @@ import numpy as np
 import pytest
 
 from rank_preserving_calibration import (
-    ADMMResult,
     CalibrationError,
     CalibrationResult,
-    calibrate_admm,
     calibrate_dykstra,
 )
 
@@ -95,39 +93,6 @@ class TestDykstraCore:
         for result in [result_stable, result_group]:
             assert result.max_row_error < 1e-7
             assert result.max_col_error < 1e-8
-
-
-class TestADMMCore:
-    """Test core ADMM algorithm functionality."""
-
-    def test_admm_basic(self):
-        """Test basic ADMM functionality."""
-        P = np.array([[0.7, 0.3], [0.4, 0.6], [0.6, 0.4]])
-        M = np.array([1.5, 1.5])
-
-        result = calibrate_admm(P, M, verbose=False)
-
-        assert isinstance(result, ADMMResult)
-        assert result.Q.shape == P.shape
-        assert len(result.objective_values) > 0
-        assert len(result.primal_residuals) > 0
-        assert len(result.dual_residuals) > 0
-        assert result.max_row_error < 1e-8
-        assert result.max_col_error < 1e-8
-
-    def test_admm_vs_dykstra_consistency(self):
-        """Test that ADMM and Dykstra give similar results on simple cases."""
-        P = np.array([[0.6, 0.4], [0.3, 0.7], [0.5, 0.5]])
-        M = np.array([1.2, 1.8])
-
-        result_dykstra = calibrate_dykstra(P, M, verbose=False)
-        result_admm = calibrate_admm(P, M, verbose=False)
-
-        # Results should be close (not identical due to different algorithms)
-        distance = np.linalg.norm(result_dykstra.Q - result_admm.Q, "fro")
-        assert distance < 0.1, (
-            f"Dykstra and ADMM results too different: distance = {distance}"
-        )
 
 
 class TestInputValidation:
