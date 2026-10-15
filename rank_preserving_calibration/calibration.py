@@ -72,10 +72,16 @@ class CalibrationResult:
         final_change: Final relative change in solution between iterations.
 
     Examples:
+        >>> import numpy as np
+        >>> from rank_preserving_calibration import calibrate_dykstra
+        >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
+        >>> M = np.array([0.8, 0.8, 0.4])
         >>> result = calibrate_dykstra(P, M)
         >>> if result.converged:
         ...     print(f"Calibration successful in {result.iterations} iterations")
+        Calibration successful in 2 iterations
         >>> print(f"Max rank violation: {result.max_rank_violation:.6f}")
+        Max rank violation: 0.000000
     """
 
     Q: np.ndarray
@@ -472,6 +478,7 @@ def is_feasible(
 
     Examples:
         >>> import numpy as np
+        >>> from rank_preserving_calibration import is_feasible
         >>> Q = np.full((4, 2), 0.5)
         >>> is_feasible(Q, np.array([2.0, 2.0]))
         True
@@ -633,11 +640,14 @@ def calibrate_dykstra(
         >>> import numpy as np
         >>> from rank_preserving_calibration import calibrate_dykstra
         >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
-        >>> M = np.array([1.0, 0.7, 0.3])  # Target column sums
+        >>> M = np.array([0.8, 0.8, 0.4])  # target column sums; P's are 1.0, 0.7, 0.3
         >>> result = calibrate_dykstra(P, M)
         >>> print(f"Converged: {result.converged}")
-        >>> print(f"Row sums: {result.Q.sum(axis=1)}")
-        >>> print(f"Column sums: {result.Q.sum(axis=0)}")
+        Converged: True
+        >>> result.Q.sum(axis=1).round(6).tolist()
+        [1.0, 1.0]
+        >>> result.Q.sum(axis=0).round(6).tolist()
+        [0.8, 0.8, 0.4]
 
         With nearly-isotonic constraints:
 
@@ -853,10 +863,10 @@ def calibrate_admm(
         >>> import numpy as np
         >>> from rank_preserving_calibration import calibrate_admm
         >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
-        >>> M = np.array([1.0, 0.7, 0.3])
+        >>> M = np.array([0.8, 0.8, 0.4])
         >>> result = calibrate_admm(P, M)
         >>> print(f"Converged: {result.converged}")
-        >>> print(f"Objective values: {result.objective_values[-5:]}")
+        Converged: True
 
         With lambda-penalty for soft isotonicity:
 

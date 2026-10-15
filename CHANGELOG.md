@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `classwise_ece` returned the sum of the per-class ECEs instead of their mean,
+  so it was too large by a factor of the number of classes. It now follows
+  Kull et al. (2019), eq. 4.
+- `auc_deltas` broke ties between scores by row order, so the AUC of a
+  calibrated column with flat runs depended on how the rows happened to be
+  sorted. Tied scores now share their average rank, as in the standard
+  Mann-Whitney AUC.
+- `informativeness_ratio` warned about an empty mean when every column of the
+  original was flat; `mean_column_ratio` is now NaN in that case.
+- Every docstring example runs and records its output, and the docs build runs
+  them again. The quick start's targets did not sum to the number of rows, so
+  it could not converge; several examples used targets the input already met.
+
+### Removed
+- `classwise_ece(balanced=...)`. It weighted bins, not classes, so it did not
+  do what it said.
+- Two compiled helpers that nothing called.
+
 ## [0.9.1] - 2026-10-14
 
 ### Fixed

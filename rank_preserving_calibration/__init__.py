@@ -12,14 +12,19 @@ Quick start
 >>> # Toy data
 >>> rng = np.random.default_rng(42)
 >>> P = rng.dirichlet(np.ones(4), size=100)  # N x J predicted probs, rows sum to 1
->>> M = (P.sum(axis=0) + rng.normal(0, 0.05, 4))  # target column marginals (sum ≈ N)
->>> M = np.maximum(M, 1e-3)
+>>> # Target class counts: shifted, but still summing to N, since each row sums to 1
+>>> M = P.sum(axis=0) * np.array([1.2, 1.0, 0.9, 0.9])
+>>> M *= len(P) / M.sum()
 >>> # Calibrate
->>> res = calibrate_dykstra(P, M, detect_cycles=False, rtol=0.0)
->>> print(res.converged, res.iterations)
->>> # Check invariants
->>> print(feasibility_metrics(res.Q, M))
->>> print(isotonic_metrics(res.Q, P)["max_rank_violation"])
+>>> res = calibrate_dykstra(P, M)
+>>> res.converged
+True
+>>> # Check invariants: rows still sum to 1, columns hit M, order is kept
+>>> fm = feasibility_metrics(res.Q, M)
+>>> bool(fm["row"]["max_abs_error"] < 1e-6 and fm["col"]["max_abs_error"] < 1e-6)
+True
+>>> isotonic_metrics(res.Q, P)["max_rank_violation"]
+0.0
 """
 
 # Version info - imported dynamically from pyproject.toml

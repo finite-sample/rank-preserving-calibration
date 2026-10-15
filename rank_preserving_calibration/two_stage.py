@@ -110,7 +110,8 @@ def calibrate_ipf(
         >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
         >>> M = np.array([0.8, 0.8, 0.4])
         >>> result = calibrate_ipf(P, M)
-        >>> print(f"Column sums: {result.Q.sum(axis=0)}")
+        >>> result.Q.sum(axis=0).round(6).tolist()
+        [0.8, 0.8, 0.4]
     """
     _configure_logging(verbose)
 
@@ -243,6 +244,7 @@ def calibrate_two_stage(
         >>> M = np.array([1.0, 1.2, 0.8])
         >>> result = calibrate_two_stage(P, M)
         >>> print(f"Converged: {result.converged}")
+        Converged: True
     """
     _configure_logging(verbose)
 

@@ -339,7 +339,7 @@ def calibrate_kl(
         >>> import numpy as np
         >>> from rank_preserving_calibration import calibrate_kl
         >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
-        >>> M = np.array([1.0, 0.7, 0.3])
+        >>> M = np.array([0.8, 0.8, 0.4])
         >>> result = calibrate_kl(P, M)
 
         With anchor-reference decoupling:
@@ -502,6 +502,10 @@ def calibrate_kl_soft(
         KLCalibrationResult with calibrated matrix.
 
     Examples:
+        >>> import numpy as np
+        >>> from rank_preserving_calibration import calibrate_kl_soft
+        >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
+        >>> M = np.array([0.8, 0.8, 0.4])
         >>> result = calibrate_kl_soft(P, M, lam=10.0)  # Strong rank enforcement
         >>> result = calibrate_kl_soft(P, M, lam=0.1)  # Weak rank enforcement
     """
@@ -635,9 +639,13 @@ def calibrate_kl_pareto(
         KLParetoResult with solutions along the frontier.
 
     Examples:
+        >>> import numpy as np
+        >>> from rank_preserving_calibration import calibrate_kl_pareto
+        >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
+        >>> M = np.array([0.8, 0.8, 0.4])
         >>> result = calibrate_kl_pareto(P, M)
-        >>> for lam, Q in result.solutions:
-        ...     print(f"λ={lam:.2f}: KL={result.kl_values[i]:.4f}")
+        >>> len(result.solutions) == len(result.kl_values) == len(result.lambda_path)
+        True
     """
     _configure_logging(verbose)
 

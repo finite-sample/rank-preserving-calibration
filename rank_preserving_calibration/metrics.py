@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+from scipy.stats import rankdata
 
 
 def _safe_log(x: np.ndarray, eps: float = 1e-15) -> np.ndarray:
@@ -35,6 +36,7 @@ def kl_divergence(Q: np.ndarray, R: np.ndarray, eps: float = 1e-15) -> float:
         >>> Q = np.array([[0.6, 0.3, 0.1], [0.4, 0.4, 0.2]])
         >>> kl = kl_divergence(Q, P)
         >>> print(f"KL divergence: {kl:.4f}")
+        KL divergence: 0.0550
     """
     Q = np.asarray(Q, dtype=np.float64)
     R = np.asarray(R, dtype=np.float64)
@@ -127,7 +129,9 @@ def feasibility_metrics(Q: np.ndarray, M: np.ndarray | None = None) -> dict[str,
         >>> M = np.array([1.0, 0.7, 0.3])
         >>> metrics = feasibility_metrics(Q, M)
         >>> print(f"Max row error: {metrics['row']['max_abs_error']:.6f}")
+        Max row error: 0.000000
         >>> print(f"Max col error: {metrics['col']['max_abs_error']:.6f}")
+        Max col error: 0.000000
     """
     Q = np.asarray(Q, dtype=np.float64)
     _N, _J = Q.shape
@@ -177,6 +181,7 @@ def isotonic_metrics(Q: np.ndarray, P: np.ndarray) -> dict[str, Any]:
         >>> Q = np.array([[0.65, 0.25, 0.1], [0.35, 0.45, 0.2]])
         >>> metrics = isotonic_metrics(Q, P)
         >>> print(f"Max violation: {metrics['max_rank_violation']:.6f}")
+        Max violation: 0.000000
     """
     Q = np.asarray(Q, dtype=np.float64)
     P = np.asarray(P, dtype=np.float64)
@@ -264,10 +269,12 @@ def distance_metrics(Q: np.ndarray, P: np.ndarray) -> dict[str, float]:
 
     Examples:
         >>> import numpy as np
+        >>> from rank_preserving_calibration import distance_metrics
         >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
         >>> Q = np.array([[0.65, 0.25, 0.1], [0.35, 0.45, 0.2]])
         >>> distances = distance_metrics(Q, P)
         >>> print(f"Frobenius distance: {distances['frobenius']:.4f}")
+        Frobenius distance: 0.1000
     """
     Q = np.asarray(Q, dtype=np.float64)
     P = np.asarray(P, dtype=np.float64)
@@ -295,10 +302,12 @@ def nll(y: np.ndarray, probs: np.ndarray) -> float:
 
     Examples:
         >>> import numpy as np
+        >>> from rank_preserving_calibration import nll
         >>> y = np.array([0, 1, 2])
         >>> probs = np.array([[0.8, 0.1, 0.1], [0.2, 0.7, 0.1], [0.1, 0.2, 0.7]])
         >>> loss = nll(y, probs)
         >>> print(f"NLL: {loss:.4f}")
+        NLL: 0.3122
     """
     y = np.asarray(y, dtype=np.int64)
     probs = np.asarray(probs, dtype=np.float64)
@@ -320,10 +329,12 @@ def brier(y: np.ndarray, probs: np.ndarray) -> float:
 
     Examples:
         >>> import numpy as np
+        >>> from rank_preserving_calibration import brier
         >>> y = np.array([0, 1, 2])
         >>> probs = np.array([[0.8, 0.1, 0.1], [0.2, 0.7, 0.1], [0.1, 0.2, 0.7]])
         >>> score = brier(y, probs)
         >>> print(f"Brier score: {score:.4f}")
+        Brier score: 0.1133
     """
     y = np.asarray(y, dtype=np.int64)
     probs = np.asarray(probs, dtype=np.float64)
@@ -353,10 +364,12 @@ def top_label_ece(y: np.ndarray, probs: np.ndarray, n_bins: int = 15) -> dict:
 
     Examples:
         >>> import numpy as np
+        >>> from rank_preserving_calibration import top_label_ece
         >>> y = np.array([0, 1, 2])
         >>> probs = np.array([[0.8, 0.1, 0.1], [0.2, 0.7, 0.1], [0.1, 0.2, 0.7]])
         >>> ece_result = top_label_ece(y, probs)
         >>> print(f"ECE: {ece_result['ece']:.4f}")
+        ECE: 0.2667
     """
     y = np.asarray(y, dtype=np.int64)
     probs = np.asarray(probs, dtype=np.float64)
@@ -383,50 +396,46 @@ def top_label_ece(y: np.ndarray, probs: np.ndarray, n_bins: int = 15) -> dict:
     return {"ece": float(ece), "mce": float(mce), "bins": table}
 
 
-def classwise_ece(
-    y: np.ndarray, probs: np.ndarray, n_bins: int = 15, balanced: bool = False
-) -> dict:
+def classwise_ece(y: np.ndarray, probs: np.ndarray, n_bins: int = 15) -> dict:
     """Compute class-wise Expected Calibration Error.
 
-    For each class, bins predictions by the predicted probability for that class
-    and measures the gap between predicted probability and actual frequency.
-    Aggregates across all classes.
+    For each class j, bins rows by their predicted probability of j and
+    compares the mean prediction in each bin with the share of rows in it that
+    are class j, weighting each bin by its share of all rows. That is the
+    class-j ECE; the overall figure is its mean over classes (Kull et al.,
+    2019, eq. 4).
 
     Args:
         y: True class labels as integers of shape (N,).
         probs: Probability matrix of shape (N, J).
-        n_bins: Number of probability bins per class (default 15).
-        balanced: If True, weight classes equally; otherwise weight by sample count.
+        n_bins: Number of equal-width probability bins per class (default 15).
 
     Returns:
         Dictionary containing:
-            - "ece": Aggregated Expected Calibration Error
-            - "mce": Maximum Calibration Error across all classes
-            - "per_class": List of per-class ECE/MCE metrics and bin tables
+            - "ece": Mean of the class-j ECEs
+            - "mce": Largest bin gap in any class
+            - "per_class": Per-class ECE, MCE and (count, mean prediction,
+              frequency) bin tables
 
     Examples:
         >>> import numpy as np
-        >>> y = np.array([0, 0, 1, 1, 2, 2])
-        >>> probs = np.array([[0.8, 0.1, 0.1], [0.7, 0.2, 0.1],
-        ...                   [0.2, 0.6, 0.2], [0.1, 0.8, 0.1],
-        ...                   [0.1, 0.2, 0.7], [0.1, 0.1, 0.8]])
-        >>> result = classwise_ece(y, probs)
-        >>> print(f"Classwise ECE: {result['ece']:.4f}")
+        >>> from rank_preserving_calibration import classwise_ece
+        >>> y = np.array([0, 1, 2, 2])
+        >>> probs = np.array([[0.7, 0.2, 0.1], [0.2, 0.7, 0.1],
+        ...                   [0.2, 0.2, 0.6], [0.6, 0.2, 0.2]])
+        >>> round(classwise_ece(y, probs, n_bins=2)["ece"], 4)
+        0.2167
     """
     y = np.asarray(y, dtype=np.int64)
     probs = np.asarray(probs, dtype=np.float64)
     N, J = probs.shape
     bins = np.linspace(0.0, 1.0, n_bins + 1)
-    total_weight = 0.0
-    ece = 0.0
-    mce = 0.0
     per_class = []
     for j in range(J):
         p = probs[:, j]
         label = (y == j).astype(np.float64)
         idx = np.clip(np.digitize(p, bins) - 1, 0, n_bins - 1)
         class_ece = 0.0
-        class_weight = 0.0
         class_mce = 0.0
         rows = []
         for b in range(n_bins):
@@ -438,28 +447,15 @@ def classwise_ece(
             conf = float(p[mask].mean())
             freq = float(label[mask].mean())
             gap = abs(conf - freq)
-            w = (1.0 / J) * (cnt / cnt) if balanced else (cnt / N)
-            # balanced: each nonempty bin contributes equally across classes
-            class_ece += (1.0 / n_bins) * gap if balanced else w * gap
-            class_weight += (1.0 / n_bins) if balanced else w
+            class_ece += (cnt / N) * gap
             class_mce = max(class_mce, gap)
             rows.append((cnt, conf, freq))
-        if class_weight > 0:
-            per_class.append(
-                {
-                    "class": j,
-                    "ece": float(class_ece),
-                    "mce": float(class_mce),
-                    "bins": rows,
-                }
-            )
-            ece += class_ece
-            total_weight += 1.0 if balanced else 1.0  # both sum per class
-        mce = max(mce, class_mce)
-    # ece already aggregated per class under chosen scheme
+        per_class.append(
+            {"class": j, "ece": float(class_ece), "mce": float(class_mce), "bins": rows}
+        )
     return {
-        "ece": float(ece / (J if balanced else 1.0)),
-        "mce": float(mce),
+        "ece": float(np.mean([c["ece"] for c in per_class])),
+        "mce": float(max(c["mce"] for c in per_class)),
         "per_class": per_class,
     }
 
@@ -484,9 +480,11 @@ def sharpness_metrics(probs: np.ndarray) -> dict[str, float]:
 
     Examples:
         >>> import numpy as np
+        >>> from rank_preserving_calibration import sharpness_metrics
         >>> probs = np.array([[0.9, 0.05, 0.05], [0.5, 0.3, 0.2]])
         >>> sharp = sharpness_metrics(probs)
         >>> print(f"Mean max prob: {sharp['mean_max_prob']:.3f}")
+        Mean max prob: 0.700
     """
     probs = np.asarray(probs, dtype=np.float64)
     ent = -np.sum(np.where(probs > 0, probs * np.log(probs), 0.0), axis=1)
@@ -525,6 +523,7 @@ def column_variance(Q: np.ndarray) -> dict[str, Any]:
         >>> Q = np.array([[0.6, 0.3, 0.1], [0.4, 0.4, 0.2]])
         >>> var = column_variance(Q)
         >>> print(f"Mean column variance: {var['mean']:.4f}")
+        Mean column variance: 0.0050
     """
     Q = np.asarray(Q, dtype=np.float64)
     col_vars = np.var(Q, axis=0)
@@ -562,6 +561,7 @@ def informativeness_ratio(Q: np.ndarray, P: np.ndarray) -> dict[str, Any]:
         >>> Q = np.array([[0.5, 0.35, 0.15], [0.5, 0.35, 0.15]])  # Flat
         >>> ratio = informativeness_ratio(Q, P)
         >>> print(f"Total ratio: {ratio['total_ratio']:.3f}")
+        Total ratio: 0.487
     """
     Q = np.asarray(Q, dtype=np.float64)
     P = np.asarray(P, dtype=np.float64)
@@ -586,7 +586,8 @@ def informativeness_ratio(Q: np.ndarray, P: np.ndarray) -> dict[str, Any]:
         else:
             per_col_ratios.append(float("inf") if vq > 0 else 1.0)
 
-    mean_col_ratio = float(np.mean([r for r in per_col_ratios if np.isfinite(r)]))
+    finite = [r for r in per_col_ratios if np.isfinite(r)]
+    mean_col_ratio = float(np.mean(finite)) if finite else float("nan")
 
     # Interpretation
     if total_ratio >= 0.8:
@@ -621,15 +622,15 @@ def _binary_auc(scores: np.ndarray, labels: np.ndarray) -> float:
     Returns:
         AUC value, or NaN if only one class is present.
     """
-    order = np.argsort(scores, kind="mergesort")
-    y = labels[order].astype(np.int64)
+    y = labels.astype(np.int64)
     n_pos = int(y.sum())
     n_neg = int(len(y) - n_pos)
     if n_pos == 0 or n_neg == 0:
         return np.nan
-    # Rank-based AUC: sum of ranks of positives
-    ranks = np.arange(1, len(y) + 1, dtype=np.float64)
-    pos_ranks = ranks[y == 1]
+    # Tied scores share their average rank, so a tie between a positive and a
+    # negative counts half. Calibration produces flat runs, where any other
+    # tie-break would make the AUC depend on row order.
+    pos_ranks = rankdata(scores)[y == 1]
     return float((pos_ranks.sum() - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg))
 
 
