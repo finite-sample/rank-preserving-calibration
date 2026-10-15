@@ -101,9 +101,6 @@ def calibrate_ipf(
     Returns:
         IPFResult with the scaled probability matrix.
 
-    Raises:
-        CalibrationError: If inputs are invalid.
-
     Examples:
         >>> import numpy as np
         >>> from rank_preserving_calibration import calibrate_ipf
@@ -209,9 +206,6 @@ def calibrate_two_stage(
 
     Returns:
         TwoStageResult with calibrated matrix and diagnostics.
-
-    Raises:
-        CalibrationError: If inputs are invalid.
 
     Examples:
         >>> import numpy as np
