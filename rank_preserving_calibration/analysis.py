@@ -55,6 +55,7 @@ def flatness_metrics(
         >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
         >>> metrics = flatness_metrics(Q, P)
         >>> print(f"Variance ratio: {metrics['variance_ratio']:.3f}")
+        Variance ratio: 0.289
     """
     Q = np.asarray(Q, dtype=np.float64)
     N, _J = Q.shape
@@ -141,6 +142,7 @@ def marginal_shift_metrics(P: np.ndarray, M: np.ndarray) -> dict[str, Any]:
         >>> M = np.array([0.8, 0.8, 0.4])
         >>> metrics = marginal_shift_metrics(P, M)
         >>> print(f"L2 shift: {metrics['l2_shift']:.3f}")
+        L2 shift: 0.245
     """
     P = np.asarray(P, dtype=np.float64)
     M = np.asarray(M, dtype=np.float64)
@@ -200,6 +202,7 @@ def flatness_bound(P: np.ndarray, M: np.ndarray) -> dict[str, Any]:
         >>> M = np.array([0.5, 0.8, 0.7])  # Large shift
         >>> bound = flatness_bound(P, M)
         >>> print(f"Flatness risk: {bound['flatness_risk']:.2f}")
+        Flatness risk: 0.32
     """
     P = np.asarray(P, dtype=np.float64)
     M = np.asarray(M, dtype=np.float64)

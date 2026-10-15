@@ -53,6 +53,7 @@ def calibrate_ovr_isotonic(
 
     Examples:
         >>> import numpy as np
+        >>> from rank_preserving_calibration import calibrate_ovr_isotonic
         >>> rng = np.random.default_rng(0)
         >>> P = rng.dirichlet(np.ones(3), size=50)
         >>> y = rng.integers(0, 3, 50)

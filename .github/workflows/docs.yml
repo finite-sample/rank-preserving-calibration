@@ -21,9 +21,4 @@ jobs:
       id-token: write
     with:
       docs-dir: docs/source
-      # 67 of the 276 docstring examples do not run: the module-level Quick
-      # start prints without recording expected output, and several docstrings
-      # use names they never import. They are illustrative, not executable.
-      # Turn this on once they are repaired.
-      run-doctests: false
       deploy: ${{ github.event_name == 'push' }}

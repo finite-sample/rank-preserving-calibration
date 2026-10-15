@@ -22,5 +22,5 @@ jobs:
       # ["3.11", "3.14"] cannot resolve its first leg.
       python-versions: '["3.12", "3.14"]'
       wheel-import: rank_preserving_calibration
-      coverage-floor: 77
+      coverage-floor: 88
       run-preen: true

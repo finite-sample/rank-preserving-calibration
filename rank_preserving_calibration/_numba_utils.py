@@ -84,124 +84,6 @@ def project_row_simplex_jit(rows: np.ndarray, eps: float = 1e-15) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------
-# JIT-compiled isotonic regression (PAV algorithm)
-# ---------------------------------------------------------------------
-
-
-@njit(cache=True, fastmath=True)
-def isotonic_regression_jit(
-    y: np.ndarray, weights: np.ndarray | None = None, rtol: float = 0.0
-) -> np.ndarray:
-    """JIT-compiled isotonic regression via Pool Adjacent Violators.
-
-    Computes isotonic (non-decreasing) regression in O(n) time.
-
-    Args:
-        y: Input values to make isotonic.
-        weights: Weights for weighted isotonic regression.
-        rtol: Relative tolerance for violations.
-
-    Returns:
-        Isotonic fit with the same shape as ``y``.
-    """
-    n = y.size
-    if n <= 1:
-        return y.copy()
-
-    # Initialize weights if not provided
-    w = np.ones(n, dtype=np.float64) if weights is None else weights.astype(np.float64)
-
-    # PAV algorithm using block pooling
-    # Arrays for tracking blocks
-    block_vals = np.empty(n, dtype=np.float64)
-    block_weights = np.empty(n, dtype=np.float64)
-    block_starts = np.empty(n, dtype=np.int64)
-
-    n_blocks = 0
-
-    for i in range(n):
-        # Start new block
-        block_vals[n_blocks] = y[i]
-        block_weights[n_blocks] = w[i]
-        block_starts[n_blocks] = i
-        n_blocks += 1
-
-        # Pool adjacent violators
-        while n_blocks > 1:
-            # Check if we should merge with previous block
-            tol = rtol * (
-                abs(block_vals[n_blocks - 2]) + abs(block_vals[n_blocks - 1]) + 1.0
-            )
-            if block_vals[n_blocks - 2] <= block_vals[n_blocks - 1] + tol:
-                break
-
-            # Merge blocks: weighted average
-            w1 = block_weights[n_blocks - 2]
-            w2 = block_weights[n_blocks - 1]
-            v1 = block_vals[n_blocks - 2]
-            v2 = block_vals[n_blocks - 1]
-
-            block_vals[n_blocks - 2] = (w1 * v1 + w2 * v2) / (w1 + w2)
-            block_weights[n_blocks - 2] = w1 + w2
-            n_blocks -= 1
-
-    # Expand blocks to output
-    result = np.empty_like(y)
-    for i in range(n_blocks):
-        start = block_starts[i]
-        end = block_starts[i + 1] if i < n_blocks - 1 else n
-        for j in range(start, end):
-            result[j] = block_vals[i]
-
-    return result
-
-
-# ---------------------------------------------------------------------
-# JIT-compiled helper for run-length encoding
-# ---------------------------------------------------------------------
-
-
-@njit(cache=True, fastmath=True)
-def run_lengths_jit(x_sorted: np.ndarray) -> np.ndarray:
-    """JIT-compiled run-length encoding for sorted arrays.
-
-    Computes lengths of consecutive equal values.
-
-    Args:
-        x_sorted: Sorted input array.
-
-    Returns:
-        Array of run lengths.
-    """
-    n = x_sorted.size
-    if n == 0:
-        return np.zeros(0, dtype=np.int64)
-
-    # Count number of runs first
-    n_runs = 1
-    for i in range(1, n):
-        if x_sorted[i] != x_sorted[i - 1]:
-            n_runs += 1
-
-    # Allocate output
-    lengths = np.empty(n_runs, dtype=np.int64)
-
-    # Fill run lengths
-    run_idx = 0
-    cnt = 1
-    for i in range(1, n):
-        if x_sorted[i] == x_sorted[i - 1]:
-            cnt += 1
-        else:
-            lengths[run_idx] = cnt
-            run_idx += 1
-            cnt = 1
-    lengths[run_idx] = cnt
-
-    return lengths
-
-
-# ---------------------------------------------------------------------
 # Export appropriate functions based on Numba availability
 # ---------------------------------------------------------------------
 
@@ -216,13 +98,9 @@ def get_jit_functions():
     if HAS_NUMBA:
         return {
             "project_row_simplex": project_row_simplex_jit,
-            "isotonic_regression": isotonic_regression_jit,
-            "run_lengths": run_lengths_jit,
             "available": True,
         }
     return {
         "project_row_simplex": None,
-        "isotonic_regression": None,
-        "run_lengths": None,
         "available": False,
     }
