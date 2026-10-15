@@ -143,7 +143,8 @@ def calibrate_soft(
         max_iters: Maximum number of iterations.
         tol: Convergence tolerance for relative change.
         verbose: If True, enables debug logging.
-        step_size: Step size for gradient descent updates.
+        step_size: Largest step size for the gradient updates; capped at
+            1/L so that each step descends.
 
     Returns:
         SoftCalibrationResult with calibrated matrix and diagnostics.
@@ -185,6 +186,11 @@ def calibrate_soft(
 
     # Precompute column orders
     column_orders = [np.argsort(P[:, j], kind="mergesort") for j in range(J)]
+
+    # Projected gradient descent only descends for steps up to 1/L, where L
+    # is the gradient's Lipschitz constant: the marginal term's curvature
+    # along a column is 2 lam_m N. A fixed 0.1 overshoots once lam_m N > ~4.
+    step_size = min(step_size, 1.0 / (2.0 * (1.0 + lam_m * N)))
 
     # Initialize Q
     Q = P.copy()
@@ -348,51 +354,13 @@ def calibrate_soft_admm(
         # Setting to zero:
         # (1 + 2*rho)*Q + lam_m * broadcast = P + rho*(Z - u_z) + rho*(Y - u_y)
 
-        # Per-column marginal term complicates this. Use iterative approach.
-        numerator = P + rho * (Z - u_z) + rho * (Y - u_y)
-        # Include marginal contribution
-        if lam_m > 0:
-            # Marginal term adds lam_m * (col_sum - M_j) to each element in column j
-            # So Q_ij has gradient term lam_m * (sum_k Q_kj - M_j)
-            # This couples all rows in a column
-            # For tractability, update Q column by column
-
-            Q_new = np.zeros_like(Q)
-            for j in range(J):
-                # For column j: solve
-                # (1 + 2*rho + lam_m)*Q_j + lam_m*11^T Q_j / N
-                #     = numerator_j + lam_m*M_j/N
-                # Actually: gradient
-                #     = Q_j - P_j + lam_m*(sum(Q_j) - M_j)*1
-                #       + rho*(Q_j - Z_j + u_z_j) + rho*(Q_j - Y_j + u_y_j)
-                #     = (1 + 2*rho)*Q_j + lam_m*1*1^T Q_j - P_j - rho*Z_j
-                #       + rho*u_z_j - rho*Y_j + rho*u_y_j + lam_m*(-M_j)*1
-
-                # Setting to 0:
-                # (1 + 2*rho)*Q_j + lam_m*1*sum(Q_j)
-                #     = P_j + rho*Z_j - rho*u_z_j + rho*Y_j - rho*u_y_j
-                #       + lam_m*M_j*1
-
-                # Let c = sum(Q_j). Then:
-                # (1 + 2*rho)*Q_j = RHS - lam_m*c*1
-                # Q_j = (RHS - lam_m*c*1) / (1 + 2*rho)
-                # Sum both sides:
-                # c = (sum(RHS) - lam_m*c*N) / (1 + 2*rho)
-                # c*(1 + 2*rho) = sum(RHS) - lam_m*N*c
-                # c*(1 + 2*rho + lam_m*N) = sum(RHS)
-                # c = sum(RHS) / (1 + 2*rho + lam_m*N)
-
-                RHS_j = (
-                    P[:, j]
-                    + rho * (Z[:, j] - u_z[:, j])
-                    + rho * (Y[:, j] - u_y[:, j])
-                    + lam_m * M[j] / N * np.ones(N)
-                )
-                c = RHS_j.sum() / (1 + 2 * rho + lam_m)
-                Q_new[:, j] = (RHS_j - lam_m * c / N * np.ones(N)) / (1 + 2 * rho)
-            Q = Q_new
-        else:
-            Q = numerator / (1 + 2 * rho)
+        # Setting the gradient to zero, column by column, with B the
+        # unpenalised right-hand side and c = sum(Q_j):
+        #   (1 + 2 rho) Q_j + lam_m (c - M_j) 1 = B_j
+        # Summing over rows gives c, then Q_j follows.
+        B = P + rho * (Z - u_z) + rho * (Y - u_y)
+        c = (B.sum(axis=0) + lam_m * N * M) / (1 + 2 * rho + lam_m * N)
+        Q = (B + lam_m * (M - c)) / (1 + 2 * rho)
 
         # Z-update: project onto row simplex
         Z = _project_row_simplex(Q + u_z)

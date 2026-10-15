@@ -49,6 +49,8 @@ test = [
     # cross-checks in test_qp_solver.py and test_audit_regressions.py were
     # never actually running in CI.
     "cvxpy>=1.5",
+    # Reference implementation for the one-vs-rest isotonic baseline.
+    "scikit-learn>=1.3",
 ]
 dev = [
     { include-group = "test" },

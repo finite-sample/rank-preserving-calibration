@@ -13,6 +13,8 @@ Exports:
 
 from __future__ import annotations
 
+from typing import Literal, overload
+
 import numpy as np
 
 __all__ = [
@@ -210,6 +212,45 @@ def _solve_tridiag(
     for i in range(n - 2, -1, -1):
         x[i] = (bb[i] - c[i] * x[i + 1]) / dd[i]
     return x
+
+
+@overload
+def prox_near_isotonic(
+    y: np.ndarray,
+    lam: float,
+    *,
+    rho: float = ...,
+    max_iters: int = ...,
+    abstol: float = ...,
+    reltol: float = ...,
+    return_info: Literal[False] = ...,
+) -> np.ndarray: ...
+
+
+@overload
+def prox_near_isotonic(
+    y: np.ndarray,
+    lam: float,
+    *,
+    rho: float = ...,
+    max_iters: int = ...,
+    abstol: float = ...,
+    reltol: float = ...,
+    return_info: Literal[True],
+) -> tuple[np.ndarray, dict]: ...
+
+
+@overload
+def prox_near_isotonic(
+    y: np.ndarray,
+    lam: float,
+    *,
+    rho: float = ...,
+    max_iters: int = ...,
+    abstol: float = ...,
+    reltol: float = ...,
+    return_info: bool = ...,
+) -> np.ndarray | tuple[np.ndarray, dict]: ...
 
 
 def prox_near_isotonic(

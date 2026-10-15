@@ -88,13 +88,8 @@ def calibrate_ovr_isotonic(
 
     # Rows do not sum to 1 after per-class calibration, so they are rescaled.
     # This is the step that breaks rank preservation; see the warning above.
+    # Never zero: each row's own label keeps its class's fitted value positive.
     row_sums = calibrated_probs.sum(axis=1)
-
-    zero_sum_mask = row_sums == 0
-    if np.any(zero_sum_mask):
-        calibrated_probs[zero_sum_mask, :] = 1.0 / J
-        row_sums[zero_sum_mask] = 1.0
-
     calibrated_probs = calibrated_probs / row_sums[:, np.newaxis]
 
     return {

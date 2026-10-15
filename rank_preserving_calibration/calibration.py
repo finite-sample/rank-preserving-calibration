@@ -933,18 +933,17 @@ def calibrate_admm(
                 # ADMM that solves the prox subproblem. They are not this
                 # function's outer penalty and iteration budget, and forcing
                 # those in would change the prox itself.
-                z = prox_near_isotonic(v_sorted, lam_pen)  # preen: allow-dropped-arg
-                if isinstance(z, tuple):  # safety with return_info variants
-                    z = z[0]
-                Q_unconstrained[idx, j] = z
+                Q_unconstrained[idx, j] = (
+                    prox_near_isotonic(  # preen: allow-dropped-arg
+                        v_sorted, lam_pen
+                    )
+                )
         else:
             for j in range(J):
                 idx = column_orders[j]
                 v_sorted = Q_unconstrained[idx, j]
-                if ties == "group" and score_sorted[j] is not None:
-                    score_j = score_sorted[j]
-                    if score_j is None:
-                        raise ValueError("score_j unexpectedly None")
+                score_j = score_sorted[j]
+                if ties == "group" and score_j is not None:
                     lens = _run_lengths_of_equals(score_j)
                     pos = 0
                     y_group = np.empty(lens.size, dtype=np.float64)
