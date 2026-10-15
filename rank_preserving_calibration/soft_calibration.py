@@ -24,6 +24,7 @@ from .calibration import (
     _configure_logging,
     _isotonic_regression,
     _project_row_simplex,
+    _validate_arrays,
 )
 
 
@@ -164,26 +165,7 @@ def calibrate_soft(
     """
     _configure_logging(verbose)
 
-    # Validate inputs
-    if not isinstance(P, np.ndarray) or P.ndim != 2:
-        raise CalibrationError("P must be a 2D numpy array")
-    if P.size == 0:
-        raise CalibrationError("P cannot be empty")
-    if not np.isfinite(P).all():
-        raise CalibrationError("P must not contain NaN or infinite values")
-    if np.any(P < 0):
-        raise CalibrationError("P must contain non-negative values")
-
-    N, J = P.shape
-    if J < 2:
-        raise CalibrationError("P must have at least 2 columns (classes)")
-
-    if not isinstance(M, np.ndarray) or M.ndim != 1 or M.size != J:
-        raise CalibrationError(f"M must be a 1D array of length {J}")
-    if not np.isfinite(M).all():
-        raise CalibrationError("M must not contain NaN or infinite values")
-    if np.any(M < 0):
-        raise CalibrationError("M must contain non-negative values")
+    N, J = _validate_arrays(P, M)
 
     if lam_m < 0 or lam_r < 0:
         raise CalibrationError("lam_m and lam_r must be non-negative")
@@ -326,18 +308,7 @@ def calibrate_soft_admm(
     """
     _configure_logging(verbose)
 
-    # Validate inputs
-    if not isinstance(P, np.ndarray) or P.ndim != 2:
-        raise CalibrationError("P must be a 2D numpy array")
-    if P.size == 0:
-        raise CalibrationError("P cannot be empty")
-
-    N, J = P.shape
-    if J < 2:
-        raise CalibrationError("P must have at least 2 columns")
-
-    if not isinstance(M, np.ndarray) or M.ndim != 1 or M.size != J:
-        raise CalibrationError(f"M must be a 1D array of length {J}")
+    N, J = _validate_arrays(P, M)
 
     if lam_m < 0 or lam_r < 0:
         raise CalibrationError("lam_m and lam_r must be non-negative")

@@ -648,6 +648,7 @@ def calibrate_kl_pareto(
         True
     """
     _configure_logging(verbose)
+    _validate_inputs(P, M, max_iters, tol, feasibility_tol=0.1)
 
     P = np.asarray(P, dtype=np.float64)
     M = np.asarray(M, dtype=np.float64)
@@ -665,36 +666,24 @@ def calibrate_kl_pareto(
 
     result = KLParetoResult()
 
-    # Initialize with smallest lambda
-    Q_warm = np.maximum(P.copy(), eps)
-    Q_warm = _project_row_kl_simplex(Q_warm, eps=eps)
-
     for lam in sorted(lambda_grid):
-        # Warm-start from previous solution
-        try:
-            sol = calibrate_kl_soft(
-                P,
-                M,
-                lam=float(lam),
-                R=R,
-                A=A,
-                max_iters=max_iters,
-                tol=tol,
-                verbose=False,
-                eps=eps,
-            )
-            Q = sol.Q
-        except CalibrationError:
-            continue
-
-        kl_val = _kl_div_matrix(Q, R, eps=eps)
-        rank_viol = _compute_rank_penalty_from_orders(Q, column_orders)
+        Q = calibrate_kl_soft(
+            P,
+            M,
+            lam=float(lam),
+            R=R,
+            A=A,
+            max_iters=max_iters,
+            tol=tol,
+            verbose=False,
+            eps=eps,
+        ).Q
 
         result.solutions.append((float(lam), Q.copy()))
-        result.kl_values.append(kl_val)
-        result.rank_violations.append(rank_viol)
+        result.kl_values.append(_kl_div_matrix(Q, R, eps=eps))
+        result.rank_violations.append(
+            _compute_rank_penalty_from_orders(Q, column_orders)
+        )
         result.lambda_path.append(float(lam))
-
-        Q_warm = Q
 
     return result

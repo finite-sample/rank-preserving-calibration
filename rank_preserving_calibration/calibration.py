@@ -128,23 +128,18 @@ class CalibrationError(Exception):
 # ---------------------------------------------------------------------
 
 
-def _validate_inputs(
-    P: np.ndarray, M: np.ndarray, max_iters: int, tol: float, feasibility_tol: float
-) -> tuple[int, int]:
-    """Validate all inputs to calibration functions.
+def _validate_arrays(P: np.ndarray, M: np.ndarray) -> tuple[int, int]:
+    """Check the shapes and values of P and M, shared by every solver.
 
     Args:
         P: Input probability matrix to validate.
         M: Target column sums to validate.
-        max_iters: Maximum iterations parameter to validate.
-        tol: Tolerance parameter to validate.
-        feasibility_tol: Feasibility tolerance to validate.
 
     Returns:
         Tuple of (N, J) where N is number of instances and J is number of classes.
 
     Raises:
-        CalibrationError: If any input validation fails.
+        CalibrationError: If P or M is malformed.
     """
     # Validate P using match statements
     match P:
@@ -176,6 +171,29 @@ def _validate_inputs(
             raise CalibrationError("M must not contain NaN or infinite values")
         case x if np.any(x < 0):
             raise CalibrationError("M must contain non-negative values")
+
+    return N, J
+
+
+def _validate_inputs(
+    P: np.ndarray, M: np.ndarray, max_iters: int, tol: float, feasibility_tol: float
+) -> tuple[int, int]:
+    """Validate the inputs of a solver whose row and column constraints are hard.
+
+    Args:
+        P: Input probability matrix to validate.
+        M: Target column sums to validate.
+        max_iters: Maximum iterations parameter to validate.
+        tol: Tolerance parameter to validate.
+        feasibility_tol: Feasibility tolerance to validate.
+
+    Returns:
+        Tuple of (N, J) where N is number of instances and J is number of classes.
+
+    Raises:
+        CalibrationError: If any input validation fails.
+    """
+    N, J = _validate_arrays(P, M)
 
     # Feasibility is exact, not approximate: rows summing to 1 force the grand
     # total to N, so sum(M) != N makes the intersection *empty* -- there is no

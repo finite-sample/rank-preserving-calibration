@@ -14,17 +14,17 @@ matching is acceptable.
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 
 import numpy as np
 
 from .calibration import (
-    CalibrationError,
     _compute_rank_violation,
     _configure_logging,
     _isotonic_regression,
     _project_row_simplex,
+    _validate_arrays,
+    _validate_inputs,
 )
 
 
@@ -59,7 +59,7 @@ class IPFResult:
 
     Attributes:
         Q: Probability matrix after IPF.
-        converged: Whether IPF converged.
+        converged: Whether IPF stopped changing with columns matching M.
         iterations: Number of iterations.
         max_row_error: Maximum row sum error.
         max_col_error: Maximum column sum error.
@@ -115,35 +115,7 @@ def calibrate_ipf(
     """
     _configure_logging(verbose)
 
-    # Validate inputs
-    if not isinstance(P, np.ndarray) or P.ndim != 2:
-        raise CalibrationError("P must be a 2D numpy array")
-    if P.size == 0:
-        raise CalibrationError("P cannot be empty")
-    if not np.isfinite(P).all():
-        raise CalibrationError("P must not contain NaN or infinite values")
-    if np.any(P < 0):
-        raise CalibrationError("P must contain non-negative values")
-
-    N, J = P.shape
-    if J < 2:
-        raise CalibrationError("P must have at least 2 columns (classes)")
-
-    if not isinstance(M, np.ndarray) or M.ndim != 1 or M.size != J:
-        raise CalibrationError(f"M must be a 1D array of length {J}")
-    if not np.isfinite(M).all():
-        raise CalibrationError("M must not contain NaN or infinite values")
-    if np.any(M < 0):
-        raise CalibrationError("M must contain non-negative values")
-
-    M_sum = float(M.sum())
-    if abs(M_sum - N) > 0.1 * N:
-        warnings.warn(
-            f"Sum of M ({M_sum:.3f}) differs significantly from N ({N}). "
-            "IPF may not converge well.",
-            UserWarning,
-            stacklevel=2,
-        )
+    _validate_inputs(P, M, max_iters, tol, feasibility_tol=0.0)
 
     P = np.asarray(P, dtype=np.float64)
     M = np.asarray(M, dtype=np.float64)
@@ -189,6 +161,10 @@ def calibrate_ipf(
     col_sums_final = Q.sum(axis=0)
     max_row_error = float(np.max(np.abs(row_sums_final - 1.0)))
     max_col_error = float(np.max(np.abs(col_sums_final - M)))
+    # A stationary iterate is not enough: when sum(M) != N, IPF settles on a
+    # fixed point whose columns miss M. Feasible problems reach ~1e-9 relative
+    # error; the threshold leaves three orders of magnitude either side.
+    converged = converged and max_col_error <= 1e-6 * max(float(M.max()), 1.0)
 
     return IPFResult(
         Q=Q,
@@ -248,18 +224,7 @@ def calibrate_two_stage(
     """
     _configure_logging(verbose)
 
-    # Validate inputs
-    if not isinstance(P, np.ndarray) or P.ndim != 2:
-        raise CalibrationError("P must be a 2D numpy array")
-    if P.size == 0:
-        raise CalibrationError("P cannot be empty")
-
-    _N, J = P.shape
-    if J < 2:
-        raise CalibrationError("P must have at least 2 columns")
-
-    if not isinstance(M, np.ndarray) or M.ndim != 1 or M.size != J:
-        raise CalibrationError(f"M must be a 1D array of length {J}")
+    _N, J = _validate_arrays(P, M)
 
     P = np.asarray(P, dtype=np.float64)
     M = np.asarray(M, dtype=np.float64)
