@@ -59,7 +59,8 @@ class IPFResult:
 
     Attributes:
         Q: Probability matrix after IPF.
-        converged: Whether IPF stopped changing with columns matching M.
+        converged: Whether both the relative change and the rows' gap from 1
+            after the column step fell below tol.
         iterations: Number of iterations.
         max_row_error: Maximum row sum error.
         max_col_error: Maximum column sum error.
@@ -144,7 +145,12 @@ def calibrate_ipf(
         Q_norm = np.linalg.norm(Q_prev)
         final_change = float(change_norm / (Q_norm + 1e-15))
 
-        if final_change < tol:
+        # Stopping on the change alone would accept a fixed point that misses
+        # M: when sum(M) != N, IPF settles with rows summing to sum(M) / N.
+        # The column step makes the columns exact, so the rows' gap from 1 is
+        # what remains of the mismatch.
+        row_gap = float(np.max(np.abs(Q.sum(axis=1) - 1.0)))
+        if final_change < tol and row_gap < tol:
             converged = True
             break
 
@@ -158,10 +164,6 @@ def calibrate_ipf(
     col_sums_final = Q.sum(axis=0)
     max_row_error = float(np.max(np.abs(row_sums_final - 1.0)))
     max_col_error = float(np.max(np.abs(col_sums_final - M)))
-    # A stationary iterate is not enough: when sum(M) != N, IPF settles on a
-    # fixed point whose columns miss M. Feasible problems reach ~1e-9 relative
-    # error; the threshold leaves three orders of magnitude either side.
-    converged = converged and max_col_error <= 1e-6 * max(float(M.max()), 1.0)
 
     return IPFResult(
         Q=Q,

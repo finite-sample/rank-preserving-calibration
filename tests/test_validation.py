@@ -78,6 +78,17 @@ def test_dykstra_warns_and_raises_when_sum_of_m_is_not_n():
         calibrate_dykstra(P_OK, M_INFEASIBLE, max_iters=50)
 
 
+def test_ipf_converges_at_a_loose_tolerance():
+    # The marginal test is part of the stopping rule at the caller's tol, not
+    # a fixed 1e-6 applied after the loop has already stopped.
+    rng = np.random.default_rng(0)
+    P = rng.dirichlet(np.ones(3), size=30)
+    M = P.sum(axis=0) * np.linspace(1.3, 0.7, 3)
+    result = calibrate_ipf(P, M * 30 / M.sum(), tol=1e-3)
+    assert result.converged
+    assert result.max_col_error < 1e-2
+
+
 def test_ipf_warns_and_reports_failure_when_sum_of_m_is_not_n():
     # IPF settles on a fixed point whose columns miss M; that must not be
     # reported as convergence.

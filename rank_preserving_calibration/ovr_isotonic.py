@@ -12,7 +12,7 @@ from typing import Any
 
 import numpy as np
 
-from .calibration import _isotonic_regression
+from .calibration import CalibrationError, _isotonic_regression
 
 
 def calibrate_ovr_isotonic(
@@ -51,6 +51,9 @@ def calibrate_ovr_isotonic(
         A dictionary containing the calibrated probabilities under key ``'Q'``,
         with rows summing to 1.
 
+    Raises:
+        CalibrationError: If ``y`` is not N integer labels in ``[0, J)``.
+
     Examples:
         >>> import numpy as np
         >>> from rank_preserving_calibration import calibrate_ovr_isotonic
@@ -61,9 +64,14 @@ def calibrate_ovr_isotonic(
         >>> bool(np.allclose(Q.sum(axis=1), 1.0))
         True
     """
-    y = np.asarray(y, dtype=np.int64)
     probs = np.asarray(probs, dtype=np.float64)
-    _, J = probs.shape
+    N, J = probs.shape
+    y = np.asarray(y)
+    # Each row's own label is what keeps its calibrated row sum positive, so a
+    # label outside [0, J) would leave a row of zeros and divide by zero.
+    if y.shape != (N,) or not np.all((y >= 0) & (y < J) & (y == np.round(y))):
+        raise CalibrationError(f"y must hold N = {N} integer labels in [0, {J})")
+    y = y.astype(np.int64)
 
     calibrated_probs = np.zeros_like(probs)
 

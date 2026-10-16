@@ -1,7 +1,8 @@
 # tests/test_ovr_isotonic.py
 import numpy as np
+import pytest
 
-from rank_preserving_calibration import calibrate_ovr_isotonic
+from rank_preserving_calibration import CalibrationError, calibrate_ovr_isotonic
 
 
 def test_ovr_isotonic_basic():
@@ -81,3 +82,10 @@ def test_ovr_isotonic_matches_sklearn_with_tied_scores():
     np.testing.assert_allclose(
         calibrate_ovr_isotonic(y, probs)["Q"], expected, atol=1e-12
     )
+
+
+@pytest.mark.parametrize("y", [[0, -1], [0, 2], [0.0, 0.5], [0]])
+def test_ovr_isotonic_rejects_labels_outside_the_classes(y):
+    # A label outside [0, J) left a row of zeros and returned NaN.
+    with pytest.raises(CalibrationError, match="integer labels"):
+        calibrate_ovr_isotonic(np.array(y), np.array([[0.9, 0.1], [0.1, 0.9]]))
