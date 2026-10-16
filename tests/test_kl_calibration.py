@@ -466,5 +466,37 @@ class TestKLConfidentClassifiers:
         assert calibrate_kl_soft(P, M, lam=1.0).max_col_error < 1e-6
 
 
+class TestKLConvergenceIsJudgedOnTheMatrix:
+    """A solver status of Solved is not enough; the returned Q must fit."""
+
+    @staticmethod
+    def _off_target(monkeypatch):
+        import rank_preserving_calibration.kl_calibration as kl
+
+        real = kl._solve_kl
+
+        def fake(R, A, M, lam, tol, verbose):
+            Q, iterations, achieved = real(R, A, M, lam, tol, verbose)
+            Q = Q.copy()
+            Q[0] *= 1.001  # row 0 now sums to 1.001
+            return Q, iterations, achieved
+
+        monkeypatch.setattr(kl, "_solve_kl", fake)
+
+    def test_soft_reports_and_warns(self, monkeypatch):
+        P, M = _shifted_problem(N=10)
+        self._off_target(monkeypatch)
+        with pytest.warns(UserWarning, match="missed the constraints"):
+            result = calibrate_kl_soft(P, M, lam=1.0)
+        assert not result.converged
+        assert result.max_row_error == pytest.approx(1e-3, rel=1e-3)
+
+    def test_hard_raises(self, monkeypatch):
+        P, M = _shifted_problem(N=10)
+        self._off_target(monkeypatch)
+        with pytest.raises(CalibrationError, match="could not certify"):
+            calibrate_kl(P, M)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

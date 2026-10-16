@@ -23,6 +23,7 @@ Exports:
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -36,6 +37,12 @@ from .calibration import (
 )
 
 type NDArrayFloat = np.ndarray[Any, np.dtype[np.floating[Any]]]
+
+# Row and column error a returned matrix must meet to count as converged, and
+# the rank violation calibrate_kl accepts as none: solver precision, sized
+# from the worst cases over 40 peaked problems (2.3e-8 and 2.5e-9).
+_FEASIBILITY_TOL = 1e-7
+_RANK_TOL = 1e-8
 
 __all__ = [
     "KLCalibrationResult",
@@ -58,7 +65,7 @@ class KLCalibrationResult:
     Attributes:
         Q: Calibrated probability matrix of shape (N, J) where rows sum to 1
             and columns preserve rank ordering from anchor scores.
-        converged: True if algorithm converged within specified tolerance.
+        converged: True if the row and column errors are both at most 1e-7.
         iterations: Number of iterations performed before termination.
         kl_divergence: Final KL(Q||R) divergence value.
         max_row_error: Maximum absolute error in row sum constraint.
@@ -171,13 +178,18 @@ def _kl_result(
     Returns:
         KLCalibrationResult for Q.
     """
+    max_row_error = float(np.max(np.abs(Q.sum(axis=1) - 1.0)))
+    max_col_error = float(np.max(np.abs(Q.sum(axis=0) - M)))
     return KLCalibrationResult(
         Q=Q,
-        converged=True,
+        # Judged on the matrix, not the solver's status: a stall retried at a
+        # looser tolerance must still meet this. Measured worst cases over 40
+        # peaked problems were 1.3e-9 (rows) and 2.3e-8 (columns).
+        converged=max(max_row_error, max_col_error) <= _FEASIBILITY_TOL,
         iterations=iterations,
         kl_divergence=_kl_div_matrix(Q, R),
-        max_row_error=float(np.max(np.abs(Q.sum(axis=1) - 1.0))),
-        max_col_error=float(np.max(np.abs(Q.sum(axis=0) - M))),
+        max_row_error=max_row_error,
+        max_col_error=max_col_error,
         max_rank_violation=_compute_rank_violation(Q, A),
         final_change=0.0,
     )
@@ -240,9 +252,10 @@ def calibrate_kl(
     # of ~1e-9 do not shrink as lam grows, so they are precision, not a lam
     # that is too small. Weights past 1e5 condition the problem badly.
     for lam in (1e3, 1e4, 1e5):
-        Q, iterations, achieved = _solve_kl(R, A, M, lam, tol, verbose)
-        if _compute_rank_violation(Q, A) <= max(1e-8, 100 * achieved):
-            return _kl_result(Q, R, A, M, iterations)
+        Q, iterations, _ = _solve_kl(R, A, M, lam, tol, verbose)
+        result = _kl_result(Q, R, A, M, iterations)
+        if result.converged and result.max_rank_violation <= _RANK_TOL:
+            return result
     raise CalibrationError(
         "KL calibration could not certify rank preservation: violations remain "
         "at a penalty weight of 1e5, so the rank constraints are probably "
@@ -490,7 +503,15 @@ def calibrate_kl_soft(
         raise CalibrationError("lam must be non-negative")
     P, M, R, A = _prepare_kl(P, M, R, A, tol)
     Q, iterations, _ = _solve_kl(R, A, M, float(lam), tol, verbose)
-    return _kl_result(Q, R, A, M, iterations)
+    result = _kl_result(Q, R, A, M, iterations)
+    if not result.converged:
+        warnings.warn(
+            f"KL soft solve missed the constraints: row error "
+            f"{result.max_row_error:.1e}, column error {result.max_col_error:.1e}.",
+            UserWarning,
+            stacklevel=2,
+        )
+    return result
 
 
 def calibrate_kl_pareto(

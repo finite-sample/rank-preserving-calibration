@@ -76,6 +76,7 @@ def calibrate_soft(
     M: np.ndarray,
     lam_m: float = 1.0,
     lam_r: float = 10.0,
+    *,
     rho: float = 1.0,
     max_iters: int = 5000,
     tol: float = 1e-8,
