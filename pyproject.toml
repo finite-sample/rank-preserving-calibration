@@ -29,11 +29,6 @@ dependencies = [
   "clarabel>=0.9",
 ]
 
-[project.optional-dependencies]
-performance = [
-    "numba>=0.56",
-]
-
 [project.urls]
 Homepage = "https://github.com/finite-sample/rank-preserving-calibration"
 Source = "https://github.com/finite-sample/rank-preserving-calibration"
@@ -54,12 +49,13 @@ test = [
     # cross-checks in test_qp_solver.py and test_audit_regressions.py were
     # never actually running in CI.
     "cvxpy>=1.5",
+    # Reference implementation for the one-vs-rest isotonic baseline.
+    "scikit-learn>=1.7",
 ]
 dev = [
     { include-group = "test" },
     "ruff==0.16.10",
     "pre-commit>=3.0",
-    "numba>=0.56",
     "pydoclint>=0.3.0",
     "pyright>=1.1.0",
 ]
@@ -152,6 +148,7 @@ check-yield-types = true
 # which is always near 100% and hides the package's real number.
 [tool.coverage.run]
 source = ["rank_preserving_calibration"]
+branch = true
 
 [tool.pytest.ini_options]
 markers = [

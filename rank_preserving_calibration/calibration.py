@@ -14,7 +14,6 @@ from typing import Any
 
 import numpy as np
 
-from ._numba_utils import get_jit_functions
 from .nearly import (
     project_near_isotonic_euclidean,  # epsilon-slack, with exact sum shift
     prox_near_isotonic,  # lambda-penalty (exact prox if provided version)
@@ -23,8 +22,6 @@ from .nearly import (
 type NDArrayFloat = np.ndarray[Any, np.dtype[np.floating[Any]]]
 type ColumnOrders = list[np.ndarray]
 type CallbackFunction = Callable[[int, float, np.ndarray], bool] | None
-
-_jit_funcs = get_jit_functions()
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -131,23 +128,18 @@ class CalibrationError(Exception):
 # ---------------------------------------------------------------------
 
 
-def _validate_inputs(
-    P: np.ndarray, M: np.ndarray, max_iters: int, tol: float, feasibility_tol: float
-) -> tuple[int, int]:
-    """Validate all inputs to calibration functions.
+def _validate_arrays(P: np.ndarray, M: np.ndarray) -> tuple[int, int]:
+    """Check the shapes and values of P and M, shared by every solver.
 
     Args:
         P: Input probability matrix to validate.
         M: Target column sums to validate.
-        max_iters: Maximum iterations parameter to validate.
-        tol: Tolerance parameter to validate.
-        feasibility_tol: Feasibility tolerance to validate.
 
     Returns:
         Tuple of (N, J) where N is number of instances and J is number of classes.
 
     Raises:
-        CalibrationError: If any input validation fails.
+        CalibrationError: If P or M is malformed.
     """
     # Validate P using match statements
     match P:
@@ -179,6 +171,29 @@ def _validate_inputs(
             raise CalibrationError("M must not contain NaN or infinite values")
         case x if np.any(x < 0):
             raise CalibrationError("M must contain non-negative values")
+
+    return N, J
+
+
+def _validate_inputs(
+    P: np.ndarray, M: np.ndarray, max_iters: int, tol: float, feasibility_tol: float
+) -> tuple[int, int]:
+    """Validate the inputs of a solver whose row and column constraints are hard.
+
+    Args:
+        P: Input probability matrix to validate.
+        M: Target column sums to validate.
+        max_iters: Maximum iterations parameter to validate.
+        tol: Tolerance parameter to validate.
+        feasibility_tol: Feasibility tolerance to validate.
+
+    Returns:
+        Tuple of (N, J) where N is number of instances and J is number of classes.
+
+    Raises:
+        CalibrationError: If any input validation fails.
+    """
+    N, J = _validate_arrays(P, M)
 
     # Feasibility is exact, not approximate: rows summing to 1 force the grand
     # total to N, so sum(M) != N makes the intersection *empty* -- there is no
@@ -225,56 +240,35 @@ def _validate_inputs(
 # ---------------------------------------------------------------------
 
 
-def _project_row_simplex(
-    rows: np.ndarray, eps: float = 1e-15, use_jit: bool = True
-) -> np.ndarray:
+def _project_row_simplex(rows: np.ndarray, eps: float = 1e-15) -> np.ndarray:
     """Project rows onto the probability simplex with numerical stability.
 
-    Projects each row of the matrix onto the probability simplex, ensuring
-    non-negative entries that sum to 1. Uses Euclidean projection algorithm
-    with numerical stability improvements.
+    Euclidean projection of each row onto {w >= 0, sum(w) = 1} by the
+    sort-and-threshold method (Duchi et al., 2008), done for all rows at once.
 
     Args:
         rows: Matrix of shape (N, J) where each row will be projected.
         eps: Small tolerance for numerical stability in computations.
-        use_jit: Whether to use JIT-compiled version if available.
 
     Returns:
         Projected matrix with same shape, where each row sums to 1 and is non-negative.
     """
-    # Use JIT version if available and requested
-    if (
-        use_jit
-        and _jit_funcs["available"]
-        and _jit_funcs["project_row_simplex"] is not None
-    ):
-        return _jit_funcs["project_row_simplex"](rows, eps)
-
-    # Fallback to pure Python implementation
+    rows = np.asarray(rows, dtype=np.float64)
     N, J = rows.shape
-    projected = np.empty_like(rows, dtype=np.float64)
+    u = -np.sort(-rows, axis=1)
+    cssv = np.cumsum(u, axis=1) - 1.0
+    cond = u - cssv / np.arange(1, J + 1) > eps
+    # rho is the last index meeting the condition; cond[:, 0] is always true
+    # since u[0] - (u[0] - 1) = 1.
+    rho = J - 1 - np.argmax(cond[:, ::-1], axis=1)
+    theta = cssv[np.arange(N), rho] / (rho + 1.0)
+    projected = np.maximum(rows - theta[:, None], 0.0)
 
-    for i in range(N):
-        v = rows[i]
-        u = np.sort(v)[::-1]
-        cssv = np.cumsum(u) - 1.0
-        ind = np.arange(1, J + 1, dtype=np.float64)
-
-        cond = u - cssv / ind > eps
-        rho = np.nonzero(cond)[0][-1] if np.any(cond) else (J - 1)
-
-        theta = cssv[rho] / (rho + 1)
-        w = np.maximum(v - theta, 0.0)
-
-        # Normalize defensively to exactly sum to 1
-        sum_w = w.sum()
-        if sum_w > eps:
-            w /= sum_w
-        else:
-            w[:] = 1.0 / J
-
-        projected[i] = w
-
+    # Normalize defensively to exactly sum to 1
+    sums = projected.sum(axis=1, keepdims=True)
+    ok = sums[:, 0] > eps
+    projected[ok] /= sums[ok]
+    projected[~ok] = 1.0 / J
     return projected
 
 
@@ -305,42 +299,32 @@ def _isotonic_regression(
         raise ValueError("ties must be 'stable' or 'group'.")
 
     if weights is None:
-        w_init = np.ones(n, dtype=np.int64)
+        w_init = np.ones(n, dtype=np.float64)
     else:
-        w_init = np.asarray(weights)
+        w_init = np.asarray(weights, dtype=np.float64)
         if w_init.shape != y.shape:
             raise ValueError("weights must have the same shape as y")
         if np.any(w_init <= 0):
             raise ValueError("weights must be positive")
-        if np.all(np.isclose(w_init, np.round(w_init))):
-            w_init = np.round(w_init).astype(np.int64)
-        else:
-            w_init = w_init.astype(np.float64)
 
-    # Optional pre-pooling of *contiguous exact equals in y*
+    # Weights and element counts are kept apart: a block's weight sets its
+    # pooled mean, its count says how many output positions it fills.
+    # Expanding by weight wrote past the end of the output whenever a
+    # weight exceeded 1, which is how the grouped-ties path used it.
     if ties == "group":
-        vals: list[float] = []
-        wts: list[float] = []
-        i = 0
-        while i < n:
-            j = i + 1
-            vi = y[i]
-            total_w = float(w_init[i])
-            while j < n and y[j] == vi:
-                total_w += float(w_init[j])
-                j += 1
-            vals.append(float(vi))
-            wts.append(total_w)
-            i = j
-        a = np.asarray(vals, dtype=np.float64)
-        w0 = np.asarray(wts, dtype=np.float64)
+        # Pre-pool contiguous exact equals in y.
+        run_starts = np.flatnonzero(np.r_[True, y[1:] != y[:-1]])
+        a = y[run_starts]
+        w0 = np.add.reduceat(w_init, run_starts)
+        c0 = np.diff(np.r_[run_starts, n])
     else:
         a = y
-        w0 = np.asarray(w_init, dtype=np.float64)
+        w0 = w_init
+        c0 = np.ones(n, dtype=np.int64)
 
     m = a.size
     # Block stacks
-    start = np.empty(m, dtype=np.int64)  # start index in expanded output
+    start = np.empty(m, dtype=np.int64)  # start index in the output
     mean = np.empty(m, dtype=np.float64)  # block mean
     wsum = np.empty(m, dtype=np.float64)  # block weight
     top = -1
@@ -352,7 +336,7 @@ def _isotonic_regression(
         start[top] = idx
         mean[top] = a[i]
         wsum[top] = w0[i]
-        idx += round(w0[i])
+        idx += int(c0[i])
 
         # merge backward while violated beyond tolerance
         while top > 0 and mean[top - 1] > mean[top] + _tol(mean[top - 1], mean[top]):
@@ -575,7 +559,6 @@ def calibrate_dykstra(
     cycle_window: int = 10,
     nearly: dict | None = None,
     ties: str = "stable",
-    use_jit: bool = True,
     row_atol: float = 1e-8,
     col_atol: float = 1e-8,
 ) -> CalibrationResult:
@@ -608,7 +591,6 @@ def calibrate_dykstra(
             {"mode": "epsilon", "eps": 0.01} to allow small isotonicity violations.
         ties: How to handle tied scores. "stable" preserves input order, "group" pools
             equal-score instances.
-        use_jit: If True and numba is available, uses JIT-compiled functions for speed.
         row_atol: Absolute tolerance on ``|row sum - 1|`` for convergence.
             Absolute, not relative -- see `is_feasible`. The 1e-8 default is what
             alternating projections can actually reach: each sweep ends on a
@@ -658,7 +640,6 @@ def calibrate_dykstra(
         - Preserves ranking within each class (column) by original model scores
         - Memory complexity is O(N*J) for the probability matrices
         - Time complexity per iteration is O(N*J*log(N)) due to sorting
-        - For best performance, ensure sum(M) ≈ N and use numba if available
         - Raises CalibrationError on convergence failure rather than returning
           an unreliable result
     """
@@ -694,7 +675,7 @@ def calibrate_dykstra(
 
         # Project onto row simplex
         Y = Q + U
-        Q = _project_row_simplex(Y, use_jit=use_jit)
+        Q = _project_row_simplex(Y)
         U = Y - Q
 
         # Project onto column constraints
@@ -807,7 +788,6 @@ def calibrate_admm(
     verbose: bool = False,
     nearly: dict | None = None,
     ties: str = "stable",
-    use_jit: bool = True,
 ) -> ADMMResult:
     """Calibrate using ADMM-style optimization with penalty methods.
 
@@ -837,7 +817,6 @@ def calibrate_admm(
             allowing soft isotonicity violations.
         ties: How to handle tied scores. "stable" preserves input order, "group" pools
             equal-score instances.
-        use_jit: If True and numba is available, uses JIT-compiled functions for speed.
 
     Returns:
         ADMMResult object containing:
@@ -954,18 +933,17 @@ def calibrate_admm(
                 # ADMM that solves the prox subproblem. They are not this
                 # function's outer penalty and iteration budget, and forcing
                 # those in would change the prox itself.
-                z = prox_near_isotonic(v_sorted, lam_pen)  # preen: allow-dropped-arg
-                if isinstance(z, tuple):  # safety with return_info variants
-                    z = z[0]
-                Q_unconstrained[idx, j] = z
+                Q_unconstrained[idx, j] = (
+                    prox_near_isotonic(  # preen: allow-dropped-arg
+                        v_sorted, lam_pen
+                    )
+                )
         else:
             for j in range(J):
                 idx = column_orders[j]
                 v_sorted = Q_unconstrained[idx, j]
-                if ties == "group" and score_sorted[j] is not None:
-                    score_j = score_sorted[j]
-                    if score_j is None:
-                        raise ValueError("score_j unexpectedly None")
+                score_j = score_sorted[j]
+                if ties == "group" and score_j is not None:
                     lens = _run_lengths_of_equals(score_j)
                     pos = 0
                     y_group = np.empty(lens.size, dtype=np.float64)
@@ -1059,8 +1037,7 @@ def calibrate_admm(
             rtol=0.0,
             verbose=False,
             detect_cycles=False,
-            ties="stable",
-            use_jit=use_jit,
+            ties=ties,
             # The snap's Q is what gets returned, so a caller asking for a
             # nearly-isotonic relaxation has to reach it -- otherwise the
             # snap re-imposes strict rank preservation and `nearly` is a

@@ -23,14 +23,6 @@ cd rank_preserving_calibration
 pip install -e .
 ```
 
-## Optional Dependencies
-
-For faster solvers through numba:
-
-```bash
-pip install "rank_preserving_calibration[performance]"
-```
-
 ## Verification
 
 To verify your installation, run:

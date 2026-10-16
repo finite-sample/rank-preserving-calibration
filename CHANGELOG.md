@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `ties="group"` returned garbage from `calibrate_dykstra` and `calibrate_admm`.
+  The weighted isotonic step expanded each pooled block by its weight instead
+  of its element count, writing past the end of the output. ADMM also passed
+  `ties="stable"` to its final projection whatever the caller asked for. Both
+  now match an independent QP solution.
+- `calibrate_ovr_isotonic` was off by up to 0.31 whenever scores tied, from the
+  same weighted isotonic bug. It now matches scikit-learn's
+  `IsotonicRegression` exactly.
+- `calibrate_soft_admm` weighted the marginal penalty by `lam_m / N` instead
+  of `lam_m`.
+- `calibrate_soft` used a fixed step past the stable limit and could oscillate
+  between simplex corners, emptying whole classes. The step is now capped at
+  1/L.
+- `calibrate_ipf` reported `converged=True` when its columns missed `M`.
+- `calibrate_kl_pareto` returned an empty frontier on malformed input instead
+  of raising.
 - `classwise_ece` returned the sum of the per-class ECEs instead of their mean,
   so it was too large by a factor of the number of classes. It now follows
   Kull et al. (2019), eq. 4.
@@ -25,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `classwise_ece(balanced=...)`. It weighted bins, not classes, so it did not
   do what it said.
 - Two compiled helpers that nothing called.
+- The `[performance]` extra, Numba, and the `use_jit` argument. The row-simplex
+  projection is now vectorised in numpy, which is about 5x faster than the
+  Numba version was and 80x faster than the old pure-Python fallback.
 - `nll` and `brier`. They duplicated `sklearn.metrics.log_loss` and
   `sklearn.metrics.brier_score_loss(..., scale_by_half=False)`, which give the
   same numbers.
