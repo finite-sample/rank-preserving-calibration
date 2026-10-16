@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- The KL solvers judge convergence on the returned matrix (row and column
+  errors at most 1e-7), not on the solver's status, so a stall retried at a
+  looser tolerance cannot report constraints it misses.
 - `calibrate_kl` stopped short of the optimum it claimed: on a 30-row problem
   its KL was 1.5443 against a true constrained optimum of 1.5345. It is now
   solved exactly as an exponential-cone program (Clarabel). It solves the
@@ -59,6 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its `nearly={"mode": "lambda"}` option never reached the output. Penalised
   rank violations are `calibrate_soft`.
 - `calibrate_soft_admm`, merged into `calibrate_soft`.
+- Positional `rho`, `max_iters`, `tol` and `verbose` in `calibrate_soft`; they
+  are keyword-only, so old positional calls fail loudly rather than being
+  misread now that `rho` comes first.
 - The `max_iters` and `eps` arguments of the KL solvers, which no longer
   iterate.
 - `classwise_ece(balanced=...)`. It weighted bins, not classes, so it did not

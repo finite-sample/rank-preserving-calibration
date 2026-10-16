@@ -105,6 +105,15 @@ class TestADMMParameter:
         np.testing.assert_allclose(Q1, Q2, atol=1e-6)
 
 
+def test_solver_options_are_keyword_only():
+    # rho was inserted before max_iters; positionally, (..., 1000, 1e-6) would
+    # have become rho=1000, max_iters=1e-6. Now it fails loudly instead.
+    P = np.array([[0.6, 0.4], [0.3, 0.7]])
+    M = np.array([0.9, 1.1])
+    with pytest.raises(TypeError):
+        calibrate_soft(P, M, 1.0, 10.0, 1000, 1e-6)  # type: ignore[misc]
+
+
 class TestSoftCalibrationValidation:
     """Test input validation for soft calibration."""
 
