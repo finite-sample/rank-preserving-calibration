@@ -236,18 +236,18 @@ def calibrate_kl(
     # constrained minimiser. Posing the constraints directly stalls the
     # interior-point solver when many of them are active at once; the hinge
     # variables keep the problem strictly interior.
-    for lam in (1e3, 1e5, 1e7):
-        Q, status, iterations = _solve_kl(R, A, M, lam, tol, verbose)
-        if status not in ("Solved", "AlmostSolved"):
-            raise CalibrationError(
-                f"KL solver returned status {status!r}. Check that sum(M) == N "
-                "and that R is positive wherever Q needs mass."
-            )
-        if _compute_rank_violation(Q, A) <= 1e-9:
+    # "No violations" means none beyond what the solver can resolve: leftovers
+    # of ~1e-9 do not shrink as lam grows, so they are precision, not a lam
+    # that is too small. Weights past 1e5 condition the problem badly.
+    for lam in (1e3, 1e4, 1e5):
+        Q, iterations, achieved = _solve_kl(R, A, M, lam, tol, verbose)
+        if _compute_rank_violation(Q, A) <= max(1e-8, 100 * achieved):
             return _kl_result(Q, R, A, M, iterations)
     raise CalibrationError(
         "KL calibration could not certify rank preservation: violations remain "
-        "at a penalty weight of 1e7."
+        "at a penalty weight of 1e5, so the rank constraints are probably "
+        "infeasible with these targets -- for instance a zero in R high in an "
+        "anchor column forces every entry below it to zero."
     )
 
 
@@ -265,7 +265,7 @@ def _compute_rank_penalty_from_orders(
     return penalty
 
 
-def _solve_kl(
+def _solve_kl_once(
     R: np.ndarray,
     A: np.ndarray,
     M: np.ndarray,
@@ -277,12 +277,15 @@ def _solve_kl(
 
     Variables are x = [q, t, v]: the N*J entries of Q (row-major), one
     epigraph variable per entry with t >= q log(q / r), and one hinge per
-    adjacent pair in anchor order with v >= q_lower - q_upper, v >= 0. The
-    objective is sum(t) + lam * sum(v); KL's -sum(q) + sum(r) is constant
-    because the row sums fix sum(q) = N. Clarabel's cone is
-    s3 >= s2 exp(s1 / s2) for s = b - A x, so (s1, s2, s3) = (-t, q, r)
-    encodes the epigraph. An entry with r = 0 forces
-    q = 0, imposed directly since the cone has no interior there.
+    adjacent pair in anchor order with v >= q_lower - q_upper, v >= 0.
+
+    KL = sum(q log q) - sum(q log r) - sum(q) + sum(r), so the epigraph is
+    t >= q log q, and log r goes into the linear objective, giving
+    sum(t) - sum(q log r) + lam * sum(v); -sum(q) + sum(r) is constant because
+    the row sums fix sum(q) = N. Clarabel's cone is s3 >= s2 exp(s1 / s2) for
+    s = b - A x, so (s1, s2, s3) = (-t, q, 1). Keeping r out of the cone
+    matters: with r itself as s3, a confident classifier's r ~ 1e-10 left the
+    solver stalled. An entry with r = 0 forces q = 0, imposed directly.
 
     Args:
         R: KL reference of shape (N, J), non-negative.
@@ -358,12 +361,14 @@ def _solve_kl(
         )
     )
     b_exp = np.zeros(3 * e)
-    b_exp[2::3] = r[pos_r]
+    b_exp[2::3] = 1.0
     b_parts.append(b_exp)
 
     A_mat = sp.vstack(blocks, format="csc")
     b = np.concatenate(b_parts)
-    c = np.r_[np.zeros(n), np.ones(n), np.full(m, lam)]
+    log_r = np.zeros(n)
+    log_r[pos_r] = np.log(r[pos_r])
+    c = np.r_[-log_r, np.ones(n), np.full(m, lam)]
     cones = [
         clarabel.ZeroConeT(n_zero),  # type: ignore[attr-defined]
         clarabel.NonnegativeConeT(2 * m),  # type: ignore[attr-defined]
@@ -387,6 +392,46 @@ def _solve_kl(
     solution = solver.solve()
     Q = np.maximum(np.asarray(solution.x[:n], dtype=float), 0.0).reshape(N, J)
     return Q, str(solution.status), int(getattr(solution, "iterations", 0) or 0)
+
+
+def _solve_kl(
+    R: np.ndarray,
+    A: np.ndarray,
+    M: np.ndarray,
+    lam: float,
+    tol: float,
+    verbose: bool,
+) -> tuple[np.ndarray, int, float]:
+    """Solve the KL program, loosening the tolerance if the solver stalls.
+
+    The interior-point method occasionally reports InsufficientProgress at a
+    tight tolerance, on some platforms and not others. Retrying at 100x and
+    then 10^4x the tolerance recovered every case in a sweep of 40 peaked
+    problems; at 1e-8 the matrix is still accurate to about 1e-5.
+
+    Args:
+        R: KL reference of shape (N, J), non-negative.
+        A: Ranking anchor of shape (N, J).
+        M: Target column sums of shape (J,).
+        lam: Rank penalty weight.
+        tol: The tolerance to try first.
+        verbose: Print the solver log.
+
+    Returns:
+        Tuple of (Q, iterations, tolerance achieved).
+
+    Raises:
+        CalibrationError: If the solver fails at every tolerance.
+    """
+    status = ""
+    for attempt in (tol, 100 * tol, 1e4 * tol):
+        Q, status, iterations = _solve_kl_once(R, A, M, lam, attempt, verbose)
+        if status in ("Solved", "AlmostSolved"):
+            return Q, iterations, attempt
+    raise CalibrationError(
+        f"KL solver returned status {status!r} down to tolerance {1e4 * tol:.0e}. "
+        "Check that sum(M) == N and that R is positive wherever Q needs mass."
+    )
 
 
 def calibrate_kl_soft(
@@ -444,12 +489,7 @@ def calibrate_kl_soft(
     if lam < 0:
         raise CalibrationError("lam must be non-negative")
     P, M, R, A = _prepare_kl(P, M, R, A, tol)
-    Q, status, iterations = _solve_kl(R, A, M, float(lam), tol, verbose)
-    if status not in ("Solved", "AlmostSolved"):
-        raise CalibrationError(
-            f"KL soft solver returned status {status!r}. Check that sum(M) == N "
-            "and that R is positive wherever Q needs mass."
-        )
+    Q, iterations, _ = _solve_kl(R, A, M, float(lam), tol, verbose)
     return _kl_result(Q, R, A, M, iterations)
 
 

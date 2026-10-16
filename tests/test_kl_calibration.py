@@ -118,7 +118,7 @@ class TestCalibrateKLSoft:
         P, M = _shifted_problem()
         soft = calibrate_kl_soft(P, M, lam=1e4)
         hard = calibrate_kl(P, M)
-        assert soft.max_rank_violation < 1e-9
+        assert soft.max_rank_violation < 1e-8
         # KL is flat at its minimum, so the value is pinned far more tightly
         # than the matrix: 1e-10 against ~1e-6 here.
         assert soft.kl_divergence == pytest.approx(hard.kl_divergence, abs=1e-8)
@@ -156,7 +156,7 @@ class TestCalibrateKLOptimality:
 
         result = calibrate_kl(P, M)
         assert result.kl_divergence == pytest.approx(problem.value, abs=1e-7)
-        assert result.max_rank_violation < 1e-9
+        assert result.max_rank_violation < 1e-8
 
     def test_beats_another_feasible_point(self):
         # Dykstra's Euclidean projection satisfies the same constraints, so its
@@ -419,7 +419,7 @@ class TestKLReferenceEdges:
         # its total cannot be met; the soft problem only pays for the steps.
         P, M = _shifted_problem(N=12)
         R = self._zeroed(P, [0, 5, 9])
-        with pytest.raises(CalibrationError, match="R is positive"):
+        with pytest.raises(CalibrationError, match="probably infeasible"):
             calibrate_kl(P, M, R=R)
         soft = calibrate_kl_soft(P, M, lam=1.0, R=R)
         np.testing.assert_allclose(soft.Q[[0, 5, 9], [0, 1, 2]], 0.0, atol=1e-12)
@@ -438,6 +438,32 @@ class TestKLReferenceEdges:
             pytest.raises(CalibrationError, match="status"),
         ):
             calibrate_kl_soft(P, M * 1.1, lam=1.0)
+
+
+class TestKLConfidentClassifiers:
+    """Near-one-hot references, where the solver used to stall."""
+
+    def test_reference_entries_near_zero(self):
+        # Codex's case on #43: the smallest reference value is 1.4e-10, and
+        # with r itself inside the exponential cone the default solve stalled.
+        rng = np.random.default_rng(6)
+        P = rng.dirichlet(np.full(2, 0.2), size=5)
+        M = P.sum(axis=0) * np.array([1.1, 0.9])
+        M *= 5 / M.sum()
+        for result in (calibrate_kl(P, M), calibrate_kl_soft(P, M, lam=1.0)):
+            assert result.max_col_error < 1e-7
+            assert result.max_row_error < 1e-7
+
+    @pytest.mark.parametrize("seed", range(8))
+    def test_peaked_problems_solve(self, seed):
+        rng = np.random.default_rng(seed)
+        P = rng.dirichlet(np.full(3, 0.2), size=40)
+        M = P.sum(axis=0) * np.array([1.2, 1.0, 0.8])
+        M *= 40 / M.sum()
+        hard = calibrate_kl(P, M)
+        assert hard.max_rank_violation < 1e-6
+        assert hard.max_col_error < 1e-6
+        assert calibrate_kl_soft(P, M, lam=1.0).max_col_error < 1e-6
 
 
 if __name__ == "__main__":
