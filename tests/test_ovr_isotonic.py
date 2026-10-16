@@ -84,7 +84,9 @@ def test_ovr_isotonic_matches_sklearn_with_tied_scores():
     )
 
 
-@pytest.mark.parametrize("y", [[0, -1], [0, 2], [0.0, 0.5], [0]])
+@pytest.mark.parametrize(
+    "y", [[0, -1], [0, 2], [0.0, 0.5], [0], [1j, 1 + 0j], [True, False]]
+)
 def test_ovr_isotonic_rejects_labels_outside_the_classes(y):
     # A label outside [0, J) left a row of zeros and returned NaN.
     with pytest.raises(CalibrationError, match="integer labels"):
