@@ -69,7 +69,12 @@ def calibrate_ovr_isotonic(
     y = np.asarray(y)
     # Each row's own label is what keeps its calibrated row sum positive, so a
     # label outside [0, J) would leave a row of zeros and divide by zero.
-    if y.shape != (N,) or not np.all((y >= 0) & (y < J) & (y == np.round(y))):
+    real = np.issubdtype(y.dtype, np.integer) or np.issubdtype(y.dtype, np.floating)
+    if (
+        not real
+        or y.shape != (N,)
+        or not np.all((y >= 0) & (y < J) & (y == np.round(y)))
+    ):
         raise CalibrationError(f"y must hold N = {N} integer labels in [0, {J})")
     y = y.astype(np.int64)
 

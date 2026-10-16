@@ -59,8 +59,8 @@ class IPFResult:
 
     Attributes:
         Q: Probability matrix after IPF.
-        converged: Whether both the relative change and the rows' gap from 1
-            after the column step fell below tol.
+        converged: Whether both the relative change and the returned
+            matrix's largest column error fell below tol.
         iterations: Number of iterations.
         max_row_error: Maximum row sum error.
         max_col_error: Maximum column sum error.
@@ -145,19 +145,17 @@ def calibrate_ipf(
         Q_norm = np.linalg.norm(Q_prev)
         final_change = float(change_norm / (Q_norm + 1e-15))
 
-        # Stopping on the change alone would accept a fixed point that misses
-        # M: when sum(M) != N, IPF settles with rows summing to sum(M) / N.
-        # The column step makes the columns exact, so the rows' gap from 1 is
-        # what remains of the mismatch.
-        row_gap = float(np.max(np.abs(Q.sum(axis=1) - 1.0)))
-        if final_change < tol and row_gap < tol:
+        # Test the matrix that is returned: the row-normalised iterate. A
+        # small change alone would accept the fixed point IPF settles on when
+        # sum(M) != N, and a small per-row gap still lets the column error
+        # after normalisation build up across N rows.
+        Q_out = Q / np.maximum(Q.sum(axis=1, keepdims=True), 1e-15)
+        col_gap = float(np.max(np.abs(Q_out.sum(axis=0) - M)))
+        if final_change < tol and col_gap < tol:
             converged = True
             break
 
-    # Final row normalization
-    row_sums = Q.sum(axis=1, keepdims=True)
-    row_sums = np.maximum(row_sums, 1e-15)
-    Q = Q / row_sums
+    Q = Q / np.maximum(Q.sum(axis=1, keepdims=True), 1e-15)
 
     # Compute diagnostics
     row_sums_final = Q.sum(axis=1)
