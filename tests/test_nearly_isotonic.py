@@ -13,7 +13,6 @@ import pytest
 
 from rank_preserving_calibration import (
     CalibrationError,
-    calibrate_admm,
     calibrate_dykstra,
     project_near_isotonic_euclidean,
     prox_near_isotonic,
@@ -99,91 +98,6 @@ class TestEpsilonSlackIntegration:
         assert dist_large <= dist_small + 1e-10, (
             f"Large epsilon not more flexible: {dist_large} > {dist_small}"
         )
-
-
-class TestLambdaPenaltyIntegration:
-    """Test lambda-penalty nearly isotonic integration with ADMM."""
-
-    def test_admm_with_lambda_penalty(self):
-        """Test ADMM with lambda-penalty nearly isotonic."""
-        P, M = create_test_case("linear", N=12, J=3, seed=456)
-
-        # Standard ADMM
-        try:
-            result_strict = calibrate_admm(P, M, max_iters=500, verbose=False)
-            assert np.allclose(result_strict.Q.sum(axis=1), 1.0, atol=1e-10)
-            assert np.allclose(result_strict.Q.sum(axis=0), M, atol=1e-8)
-            assert np.isfinite(result_strict.Q).all()
-        except CalibrationError:
-            # ADMM convergence failure with 500 iterations is acceptable
-            pass
-
-        # Lambda-penalty ADMM
-        try:
-            nearly_params = {"mode": "lambda", "lam": 1.0}
-            result_penalty = calibrate_admm(
-                P, M, nearly=nearly_params, max_iters=500, verbose=False
-            )
-            assert np.allclose(result_penalty.Q.sum(axis=1), 1.0, atol=1e-10)
-            assert np.allclose(result_penalty.Q.sum(axis=0), M, atol=1e-8)
-            assert np.isfinite(result_penalty.Q).all()
-        except CalibrationError:
-            # ADMM convergence failure with 500 iterations is acceptable
-            pass
-
-        # At least one should converge for this to be a meaningful test
-        # But if both fail, that's also acceptable given limited iterations
-
-    def test_lambda_penalty_trade_off(self):
-        """Test lambda penalty creates trade-off between fit and isotonicity."""
-        P = np.array([[0.8, 0.2], [0.3, 0.7], [0.6, 0.4], [0.4, 0.6]])
-        M = np.array([2.0, 2.0])
-
-        lambdas = [0.1, 1.0, 10.0]
-        distances = []
-        violations = []
-        converged_results = []
-
-        for lam in lambdas:
-            try:
-                nearly_params = {"mode": "lambda", "lam": lam}
-                result = calibrate_admm(
-                    P, M, nearly=nearly_params, max_iters=300, verbose=False
-                )
-
-                # Measure distance to original
-                distance = np.linalg.norm(result.Q - P, "fro")
-                distances.append(distance)
-
-                # Measure isotonic violations
-                total_violation = 0.0
-                for j in range(P.shape[1]):
-                    order = np.argsort(P[:, j])
-                    sorted_vals = result.Q[order, j]
-                    diffs = np.diff(sorted_vals)
-                    violation = np.sum(np.maximum(0, -diffs))
-                    total_violation += violation
-                violations.append(total_violation)
-                converged_results.append(True)
-            except CalibrationError:
-                # ADMM convergence failure with 300 iterations is acceptable
-                distances.append(None)
-                violations.append(None)
-                converged_results.append(False)
-
-        # If we have at least 2 converged results, check trade-off
-        converged_count = sum(converged_results)
-        if converged_count >= 2:
-            # Find first and last converged results
-            valid_violations = [v for v in violations if v is not None]
-            if len(valid_violations) >= 2:
-                # Generally expect trade-off: larger lambda -> smaller violations
-                # (though exact monotonicity not guaranteed due to optimization)
-                assert valid_violations[-1] <= valid_violations[0] + 1e-6, (
-                    "Large lambda should reduce violations"
-                )
-        # If fewer than 2 converge the test passes: acceptable given the
-        # limited iteration budget.
 
 
 class TestNearlyIsotonicUtilities:
@@ -274,20 +188,17 @@ class TestNearlyIsotonicEdgeCases:
         P = np.array([[0.5, 0.5], [0.3, 0.7]])
         M = np.array([0.8, 1.2])
 
-        # Invalid mode is ignored (falls back to standard isotonic)
-        result_invalid = calibrate_dykstra(P, M, nearly={"mode": "invalid"})
-        assert result_invalid.Q.shape == P.shape
+        # An unknown mode is an error, not a silent fall-back to strict
+        # isotonic: that is how {"mode": "lambda"} became a no-op.
+        for mode in ("invalid", "lambda"):
+            with pytest.raises(CalibrationError, match="nearly supports only"):
+                calibrate_dykstra(P, M, nearly={"mode": mode})
 
         # Missing parameters use defaults
         result_eps_default = calibrate_dykstra(
             P, M, nearly={"mode": "epsilon"}
         )  # Uses default eps
         assert result_eps_default.Q.shape == P.shape
-
-        result_lam_default = calibrate_admm(
-            P, M, nearly={"mode": "lambda"}
-        )  # Uses default lam
-        assert result_lam_default.Q.shape == P.shape
 
     def test_empty_and_single_element_cases(self):
         """Test empty and single element edge cases."""
@@ -314,36 +225,6 @@ class TestNearlyIsotonicEdgeCases:
 
 class TestNearlyIsotonicConsistency:
     """Test consistency between different nearly isotonic approaches."""
-
-    def test_epsilon_lambda_consistency(self):
-        """Test that epsilon and lambda approaches are roughly consistent."""
-        P = np.array([[0.6, 0.4], [0.3, 0.7], [0.5, 0.5]])
-        M = np.array([1.2, 1.8])
-
-        # Epsilon-slack Dykstra
-        result_eps = calibrate_dykstra(
-            P, M, nearly={"mode": "epsilon", "eps": 0.05}, max_iters=1000, verbose=False
-        )
-
-        # Lambda-penalty ADMM
-        result_lam = calibrate_admm(
-            P, M, nearly={"mode": "lambda", "lam": 2.0}, max_iters=500, verbose=False
-        )
-
-        # Both should satisfy constraints
-        for result in [result_eps, result_lam]:
-            assert np.allclose(result.Q.sum(axis=1), 1.0, atol=1e-8)
-            assert np.allclose(result.Q.sum(axis=0), M, atol=1e-6)
-
-        # Results should be in similar ballpark (though not identical)
-        distance_between = np.linalg.norm(result_eps.Q - result_lam.Q, "fro")
-        max_reasonable_distance = np.linalg.norm(
-            P, "fro"
-        )  # Use input scale as reference
-
-        assert distance_between < max_reasonable_distance, (
-            f"Epsilon and lambda results too different: {distance_between}"
-        )
 
     def test_convergence_to_strict_limits(self):
         """Test that parameters converge to strict isotonic in limits."""

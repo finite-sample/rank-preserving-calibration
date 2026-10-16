@@ -17,13 +17,12 @@ Exports:
     - KLCalibrationResult: Result container for hard KL calibration
     - KLParetoResult: Result container for Pareto frontier sweep
     - calibrate_kl: Main hard KL solver with anchor-reference decoupling
-    - calibrate_kl_soft: Soft KL calibration with λ penalty
-    - calibrate_kl_pareto: Pareto frontier solver with warm-start sweep
+    - calibrate_kl_soft: Soft KL calibration with λ penalty, solved exactly
+    - calibrate_kl_pareto: The KL / rank-violation frontier over a λ grid
 """
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -123,173 +122,65 @@ def _kl_div_matrix(Q: np.ndarray, R: np.ndarray, eps: float = 1e-300) -> float:
     return float(np.sum(kl))
 
 
-# ---------------------------------------------------------------------
-# KL isotonic regression (generalized PAV with geometric mean)
-# ---------------------------------------------------------------------
-
-
-def _kl_isotonic_regression(
-    y: np.ndarray,
-    weights: np.ndarray | None = None,
-    eps: float = 1e-300,
-) -> np.ndarray:
-    """Isotonic regression minimizing weighted KL divergence.
-
-    Unlike Euclidean PAV which pools using arithmetic mean, KL isotonic
-    regression uses **geometric mean** pooling:
-
-        z_B = exp(1/|B| * sum_{i in B} log(w_i))
-
-    This is the exact projection onto the isotone cone for KL divergence.
+def _prepare_kl(
+    P: np.ndarray,
+    M: np.ndarray,
+    R: np.ndarray | None,
+    A: np.ndarray | None,
+    tol: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Validate the KL solvers' inputs and fill in the defaults R = A = P.
 
     Args:
-        y: Input sequence to make isotonic (non-decreasing).
-        weights: Positive weights for each element. If None, uses y as weights.
-        eps: Small constant for numerical stability.
+        P: Input probability matrix of shape (N, J).
+        M: Target column sums of shape (J,).
+        R: Reference for KL divergence, or None for P.
+        A: Anchor for rank ordering, or None for P.
+        tol: Solver tolerance.
 
     Returns:
-        Isotonic fit minimizing KL divergence.
+        Tuple of (P, M, R, A) as float arrays.
 
     Raises:
-        ValueError: If the weights do not match y's shape or are not positive.
+        CalibrationError: If R or A has the wrong shape or R is negative.
     """
-    y = np.asarray(y, dtype=np.float64)
-    n = y.size
-    if n <= 1:
-        return np.maximum(y.copy(), eps)
-
-    # Ensure positive values for log
-    y = np.maximum(y, eps)
-
-    if weights is None:
-        w = np.ones(n, dtype=np.float64)
-    else:
-        w = np.asarray(weights, dtype=np.float64)
-        if w.shape != y.shape:
-            raise ValueError("weights must have same shape as y")
-        if np.any(w <= 0):
-            raise ValueError("weights must be positive")
-
-    # Work in log space for geometric mean
-    log_y = np.log(y)
-
-    # Block stacks: start index, weighted log sum, weight sum
-    start = np.empty(n, dtype=np.int64)
-    log_sum = np.empty(n, dtype=np.float64)
-    wsum = np.empty(n, dtype=np.float64)
-    top = -1
-
-    for i in range(n):
-        top += 1
-        start[top] = i
-        log_sum[top] = w[i] * log_y[i]
-        wsum[top] = w[i]
-
-        # Merge backward while violating monotonicity
-        # Geometric mean of block: exp(log_sum / wsum)
-        while top > 0:
-            left_mean = log_sum[top - 1] / wsum[top - 1]
-            right_mean = log_sum[top] / wsum[top]
-            if left_mean <= right_mean:
-                break
-            # Merge blocks
-            log_sum[top - 1] += log_sum[top]
-            wsum[top - 1] += wsum[top]
-            top -= 1
-
-    # Expand block means
-    z = np.empty(n, dtype=np.float64)
-    for j in range(top + 1):
-        s = start[j]
-        e = start[j + 1] if j < top else n
-        block_mean = log_sum[j] / wsum[j]
-        z[s:e] = np.exp(block_mean)
-
-    return z
+    _validate_inputs(P, M, max_iters=1, tol=tol, feasibility_tol=0.0)
+    P = np.asarray(P, dtype=np.float64)
+    M = np.asarray(M, dtype=np.float64)
+    R = P.copy() if R is None else np.asarray(R, dtype=np.float64)
+    A = P.copy() if A is None else np.asarray(A, dtype=np.float64)
+    if R.shape != P.shape or A.shape != P.shape:
+        raise CalibrationError(f"R and A must have shape {P.shape}")
+    if np.any(R < 0) or not np.isfinite(R).all():
+        raise CalibrationError("R must be finite and non-negative")
+    return P, M, R, A
 
 
-# ---------------------------------------------------------------------
-# KL column projection (isotonic + multiplicative sum constraint)
-# ---------------------------------------------------------------------
-
-
-def _project_column_kl_isotonic_sum(
-    column: np.ndarray,
-    column_order: np.ndarray,
-    target_sum: float,
-    weights: np.ndarray | None = None,
-    eps: float = 1e-300,
-) -> np.ndarray:
-    """Project column onto KL-isotonic with sum constraint.
-
-    Key difference from Euclidean:
-    - Uses generalized PAV (geometric mean pooling)
-    - Uses **multiplicative** rescaling to hit sum target
+def _kl_result(
+    Q: np.ndarray, R: np.ndarray, A: np.ndarray, M: np.ndarray, iterations: int
+) -> KLCalibrationResult:
+    """Package a solved matrix with its diagnostics.
 
     Args:
-        column: Column values to project.
-        column_order: Indices that sort by anchor scores.
-        target_sum: Target sum for the column.
-        weights: Optional weights for isotonic regression.
-        eps: Small constant for numerical stability.
+        Q: Solved matrix.
+        R: KL reference.
+        A: Ranking anchor.
+        M: Target column sums.
+        iterations: Solver iterations.
 
     Returns:
-        Projected column satisfying isotonicity and sum constraint.
+        KLCalibrationResult for Q.
     """
-    if column.size == 0:
-        return column.copy()
-
-    # Sort by anchor order
-    y = np.maximum(column[column_order], eps)
-
-    # Apply KL isotonic regression
-    z_iso = _kl_isotonic_regression(y, weights=weights, eps=eps)
-
-    # Multiplicative rescaling to hit target sum
-    current_sum = z_iso.sum()
-    if current_sum > eps:
-        scale = target_sum / current_sum
-        z_scaled = z_iso * scale
-    else:
-        # Edge case: all near zero, distribute uniformly
-        z_scaled = np.full_like(z_iso, target_sum / z_iso.size)
-
-    # Restore original order
-    projected = np.empty_like(column, dtype=np.float64)
-    projected[column_order] = z_scaled
-    return projected
-
-
-# ---------------------------------------------------------------------
-# KL row simplex projection (multiplicative normalization)
-# ---------------------------------------------------------------------
-
-
-def _project_row_kl_simplex(rows: np.ndarray, eps: float = 1e-300) -> np.ndarray:
-    """Project rows onto probability simplex using KL projection.
-
-    For KL divergence, the projection onto the simplex is simply
-    **multiplicative normalization**: q_ij = p_ij / sum_k(p_ik).
-
-    This is different from the Euclidean simplex projection which
-    uses a sorting-based algorithm with additive adjustments.
-
-    Args:
-        rows: Matrix of shape (N, J) to project.
-        eps: Small constant for numerical stability.
-
-    Returns:
-        Projected matrix with rows summing to 1.
-    """
-    rows = np.maximum(rows, eps)
-    row_sums = rows.sum(axis=1, keepdims=True)
-    row_sums = np.maximum(row_sums, eps)
-    return rows / row_sums
-
-
-# ---------------------------------------------------------------------
-# Main KL calibration (Dykstra-style alternating projections)
-# ---------------------------------------------------------------------
+    return KLCalibrationResult(
+        Q=Q,
+        converged=True,
+        iterations=iterations,
+        kl_divergence=_kl_div_matrix(Q, R),
+        max_row_error=float(np.max(np.abs(Q.sum(axis=1) - 1.0))),
+        max_col_error=float(np.max(np.abs(Q.sum(axis=0) - M))),
+        max_rank_violation=_compute_rank_violation(Q, A),
+        final_change=0.0,
+    )
 
 
 def calibrate_kl(
@@ -297,159 +188,67 @@ def calibrate_kl(
     M: np.ndarray,
     R: np.ndarray | None = None,
     A: np.ndarray | None = None,
-    max_iters: int = 3000,
-    tol: float = 1e-7,
-    feasibility_tol: float = 0.1,
+    tol: float = 1e-10,
     verbose: bool = False,
-    eps: float = 1e-300,
 ) -> KLCalibrationResult:
-    """Calibrate using KL divergence with Dykstra's alternating projections.
+    """Calibrate by minimising KL divergence under rank preservation.
 
-    Projects multiclass probabilities onto the intersection of:
-      (A) row simplex: {rows ≥ 0, rows sum to 1}
-      (B) column-wise isotone-by-anchor + fixed column sums
+    Solves exactly, as an exponential-cone program::
 
-    Minimizes KL(Q||R) subject to constraints, where:
-      - R is the reference distribution for KL divergence (default: P)
-      - A is the anchor for rank ordering (default: P)
+        min KL(Q||R)  s.t.  rows of Q on the simplex, column sums = M,
+                            each column non-decreasing in the order of A
 
-    This anchor-reference decoupling allows separating "what we measure
-    divergence from" (R) from "what determines rank order" (A).
+    The anchor-reference decoupling separates what divergence is measured
+    from (R) and what fixes the rank order (A).
 
     Args:
         P: Input probability matrix of shape (N, J).
-        M: Target column sums of shape (J,).
+        M: Target column sums of shape (J,). Must sum to N.
         R: Reference distribution for KL divergence. If None, uses P.
         A: Anchor for rank ordering. If None, uses P.
-        max_iters: Maximum number of iterations.
-        tol: Convergence tolerance for relative change.
-        feasibility_tol: Tolerance for feasibility warnings.
-        verbose: If True, enables debug logging.
-        eps: Small constant for numerical stability.
+        tol: Solver gap and feasibility tolerance.
+        verbose: Print the solver log.
 
     Returns:
         KLCalibrationResult with calibrated matrix and diagnostics.
 
     Raises:
-        CalibrationError: If inputs are invalid or algorithm fails to converge.
+        CalibrationError: If the inputs are invalid or the solver fails.
 
     Examples:
-        Basic KL calibration:
-
         >>> import numpy as np
         >>> from rank_preserving_calibration import calibrate_kl
         >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
         >>> M = np.array([0.8, 0.8, 0.4])
         >>> result = calibrate_kl(P, M)
+        >>> round(result.max_col_error, 6), result.max_rank_violation < 1e-8
+        (0.0, True)
 
         With anchor-reference decoupling:
 
-        >>> # Use P for KL reference, but A for rank ordering
         >>> A = np.array([[0.6, 0.3, 0.1], [0.4, 0.4, 0.2]])
         >>> result = calibrate_kl(P, M, R=P, A=A)
     """
     _configure_logging(verbose)
-    _N, J = _validate_inputs(P, M, max_iters, tol, feasibility_tol)
-
-    P = np.asarray(P, dtype=np.float64)
-    M = np.asarray(M, dtype=np.float64)
-
-    # Set defaults for R and A
-    if R is None:
-        R = P.copy()
-    else:
-        R = np.asarray(R, dtype=np.float64)
-        if R.shape != P.shape:
-            raise CalibrationError(f"R must have shape {P.shape}, got {R.shape}")
-
-    if A is None:
-        A = P.copy()
-    else:
-        A = np.asarray(A, dtype=np.float64)
-        if A.shape != P.shape:
-            raise CalibrationError(f"A must have shape {P.shape}, got {A.shape}")
-
-    # Precompute column orders from anchor A
-    column_orders = [np.argsort(A[:, j], kind="mergesort") for j in range(J)]
-
-    # Initialize Q close to R (for KL minimization)
-    Q = np.maximum(R.copy(), eps)
-
-    # Dykstra memory terms (in multiplicative form for KL)
-    # For KL projections, we use multiplicative corrections
-    U = np.ones_like(P, dtype=np.float64)  # row memory (multiplicative)
-    V = np.ones_like(P, dtype=np.float64)  # col memory (multiplicative)
-
-    converged = False
-    final_change = float("inf")
-    iteration = 0
-
-    for iteration in range(1, max_iters + 1):  # noqa: B007  # `iteration` is the reported iteration count
-        Q_prev = Q.copy()
-
-        # Row projection with Dykstra correction
-        Y = Q * U
-        Q = _project_row_kl_simplex(Y, eps=eps)
-        # Update multiplicative memory
-        U = Y / np.maximum(Q, eps)
-
-        # Column projections with Dykstra correction
-        Y = Q * V
-        for j in range(J):
-            Y[:, j] = _project_column_kl_isotonic_sum(
-                Y[:, j],
-                column_orders[j],
-                float(M[j]),
-                eps=eps,
-            )
-        Q = Y
-        V = Y / np.maximum(Q, eps)
-
-        # Convergence check
-        change_abs = np.linalg.norm(Q - Q_prev)
-        norm_Q_prev = np.linalg.norm(Q_prev)
-        final_change = (
-            float(change_abs / norm_Q_prev) if norm_Q_prev > 0 else float(change_abs)
-        )
-
-        row_ok = np.allclose(Q.sum(axis=1), 1.0, atol=1e-10)
-        col_ok = np.allclose(Q.sum(axis=0), M, atol=1e-8)
-
-        if final_change < tol and row_ok and col_ok:
-            converged = True
-            break
-
-    # Final diagnostics
-    row_sums = Q.sum(axis=1)
-    col_sums = Q.sum(axis=0)
-    max_row_error = float(np.max(np.abs(row_sums - 1.0)))
-    max_col_error = float(np.max(np.abs(col_sums - M)))
-    max_rank_violation = _compute_rank_violation(Q, A)
-    kl_divergence = _kl_div_matrix(Q, R, eps=eps)
-
-    if not converged:
-        raise CalibrationError(
-            f"KL calibration failed to converge after {iteration} iterations. "
-            f"Final change: {final_change:.2e} (tolerance: {tol:.2e}). "
-            f"Max row error: {max_row_error:.2e}, max col error: {max_col_error:.2e}. "
-            f"Try: increasing max_iters or relaxing tol."
-        )
-
-    return KLCalibrationResult(
-        Q=Q,
-        converged=converged,
-        iterations=iteration,
-        kl_divergence=kl_divergence,
-        max_row_error=max_row_error,
-        max_col_error=max_col_error,
-        max_rank_violation=max_rank_violation,
-        final_change=final_change,
+    P, M, R, A = _prepare_kl(P, M, R, A, tol)
+    # Exact penalty with a certificate. The penalised problem relaxes the
+    # constrained one, so a penalised minimiser with no rank violations is the
+    # constrained minimiser. Posing the constraints directly stalls the
+    # interior-point solver when many of them are active at once; the hinge
+    # variables keep the problem strictly interior.
+    # "No violations" means none beyond what the solver can resolve: leftovers
+    # of ~1e-9 do not shrink as lam grows, so they are precision, not a lam
+    # that is too small. Weights past 1e5 condition the problem badly.
+    for lam in (1e3, 1e4, 1e5):
+        Q, iterations, achieved = _solve_kl(R, A, M, lam, tol, verbose)
+        if _compute_rank_violation(Q, A) <= max(1e-8, 100 * achieved):
+            return _kl_result(Q, R, A, M, iterations)
+    raise CalibrationError(
+        "KL calibration could not certify rank preservation: violations remain "
+        "at a penalty weight of 1e5, so the rank constraints are probably "
+        "infeasible with these targets -- for instance a zero in R high in an "
+        "anchor column forces every entry below it to zero."
     )
-
-
-# ---------------------------------------------------------------------
-# Soft KL calibration with λ penalty
-# ---------------------------------------------------------------------
 
 
 def _compute_rank_penalty_from_orders(
@@ -466,146 +265,232 @@ def _compute_rank_penalty_from_orders(
     return penalty
 
 
+def _solve_kl_once(
+    R: np.ndarray,
+    A: np.ndarray,
+    M: np.ndarray,
+    lam: float,
+    tol: float,
+    verbose: bool,
+) -> tuple[np.ndarray, str, int]:
+    """Minimise KL(Q||R) + lam * V_A(Q) over C(M) as an exponential-cone program.
+
+    Variables are x = [q, t, v]: the N*J entries of Q (row-major), one
+    epigraph variable per entry with t >= q log(q / r), and one hinge per
+    adjacent pair in anchor order with v >= q_lower - q_upper, v >= 0.
+
+    KL = sum(q log q) - sum(q log r) - sum(q) + sum(r), so the epigraph is
+    t >= q log q, and log r goes into the linear objective, giving
+    sum(t) - sum(q log r) + lam * sum(v); -sum(q) + sum(r) is constant because
+    the row sums fix sum(q) = N. Clarabel's cone is s3 >= s2 exp(s1 / s2) for
+    s = b - A x, so (s1, s2, s3) = (-t, q, 1). Keeping r out of the cone
+    matters: with r itself as s3, a confident classifier's r ~ 1e-10 left the
+    solver stalled. An entry with r = 0 forces q = 0, imposed directly.
+
+    Args:
+        R: KL reference of shape (N, J), non-negative.
+        A: Ranking anchor of shape (N, J).
+        M: Target column sums of shape (J,).
+        lam: Rank penalty weight.
+        tol: Solver gap and feasibility tolerance.
+        verbose: Print the solver log.
+
+    Returns:
+        Tuple of (Q, solver status, iterations).
+    """
+    import clarabel
+    import scipy.sparse as sp
+
+    N, J = R.shape
+    n = N * J
+    m = J * (N - 1)
+    n_var = 2 * n + m
+    r = R.reshape(-1)
+    zero_r = np.flatnonzero(r == 0)
+    pos_r = np.flatnonzero(r > 0)
+
+    blocks = []
+    b_parts = []
+
+    # Zero cone: row sums, column sums, and q = t = 0 where r = 0.
+    k = np.arange(n)
+    blocks.append(sp.csr_matrix((np.ones(n), (k // J, k)), shape=(N, n_var)))
+    b_parts.append(np.ones(N))
+    blocks.append(sp.csr_matrix((np.ones(n), (k % J, k)), shape=(J, n_var)))
+    b_parts.append(M)
+    z = zero_r.size
+    blocks.append(
+        sp.csr_matrix(
+            (np.ones(2 * z), (np.arange(2 * z), np.r_[zero_r, n + zero_r])),
+            shape=(2 * z, n_var),
+        )
+    )
+    b_parts.append(np.zeros(2 * z))
+    n_zero = N + J + 2 * z
+
+    # Non-negative cone: q_lower - q_upper - v <= 0, then -v <= 0.
+    lower = np.concatenate(
+        [np.argsort(A[:, j], kind="mergesort")[:-1] * J + j for j in range(J)]
+    )
+    upper = np.concatenate(
+        [np.argsort(A[:, j], kind="mergesort")[1:] * J + j for j in range(J)]
+    )
+    h = np.arange(m)
+    blocks.append(
+        sp.csr_matrix(
+            (
+                np.r_[np.ones(m), -np.ones(m), -np.ones(m)],
+                (np.r_[h, h, h], np.r_[lower, upper, 2 * n + h]),
+            ),
+            shape=(m, n_var),
+        )
+    )
+    blocks.append(sp.csr_matrix((-np.ones(m), (h, 2 * n + h)), shape=(m, n_var)))
+    b_parts.extend([np.zeros(m), np.zeros(m)])
+
+    # Exponential cones, three rows per entry with r > 0: (-t, q, r).
+    e = pos_r.size
+    rows = 3 * np.arange(e)
+    blocks.append(
+        sp.csr_matrix(
+            (
+                np.r_[np.ones(e), -np.ones(e)],
+                (np.r_[rows, rows + 1], np.r_[n + pos_r, pos_r]),
+            ),
+            shape=(3 * e, n_var),
+        )
+    )
+    b_exp = np.zeros(3 * e)
+    b_exp[2::3] = 1.0
+    b_parts.append(b_exp)
+
+    A_mat = sp.vstack(blocks, format="csc")
+    b = np.concatenate(b_parts)
+    log_r = np.zeros(n)
+    log_r[pos_r] = np.log(r[pos_r])
+    c = np.r_[-log_r, np.ones(n), np.full(m, lam)]
+    cones = [
+        clarabel.ZeroConeT(n_zero),  # type: ignore[attr-defined]
+        clarabel.NonnegativeConeT(2 * m),  # type: ignore[attr-defined]
+    ] + [clarabel.ExponentialConeT()] * e  # type: ignore[attr-defined]
+
+    settings = clarabel.DefaultSettings()  # type: ignore[attr-defined]
+    settings.verbose = bool(verbose)
+    settings.tol_gap_abs = tol
+    settings.tol_gap_rel = tol
+    settings.tol_feas = tol
+    # Clarabel reports AlmostSolved when it meets these looser tolerances but
+    # not the primary ones; the exponential cone does that at the odd lambda.
+    # At 100x the primary tolerance Q is still accurate to about 1e-7.
+    settings.reduced_tol_gap_abs = 100 * tol
+    settings.reduced_tol_gap_rel = 100 * tol
+    settings.reduced_tol_feas = 100 * tol
+
+    solver = clarabel.DefaultSolver(  # type: ignore[attr-defined]
+        sp.csc_matrix((n_var, n_var)), c, A_mat, b, cones, settings
+    )
+    solution = solver.solve()
+    Q = np.maximum(np.asarray(solution.x[:n], dtype=float), 0.0).reshape(N, J)
+    return Q, str(solution.status), int(getattr(solution, "iterations", 0) or 0)
+
+
+def _solve_kl(
+    R: np.ndarray,
+    A: np.ndarray,
+    M: np.ndarray,
+    lam: float,
+    tol: float,
+    verbose: bool,
+) -> tuple[np.ndarray, int, float]:
+    """Solve the KL program, loosening the tolerance if the solver stalls.
+
+    The interior-point method occasionally reports InsufficientProgress at a
+    tight tolerance, on some platforms and not others. Retrying at 100x and
+    then 10^4x the tolerance recovered every case in a sweep of 40 peaked
+    problems; at 1e-8 the matrix is still accurate to about 1e-5.
+
+    Args:
+        R: KL reference of shape (N, J), non-negative.
+        A: Ranking anchor of shape (N, J).
+        M: Target column sums of shape (J,).
+        lam: Rank penalty weight.
+        tol: The tolerance to try first.
+        verbose: Print the solver log.
+
+    Returns:
+        Tuple of (Q, iterations, tolerance achieved).
+
+    Raises:
+        CalibrationError: If the solver fails at every tolerance.
+    """
+    status = ""
+    for attempt in (tol, 100 * tol, 1e4 * tol):
+        Q, status, iterations = _solve_kl_once(R, A, M, lam, attempt, verbose)
+        if status in ("Solved", "AlmostSolved"):
+            return Q, iterations, attempt
+    raise CalibrationError(
+        f"KL solver returned status {status!r} down to tolerance {1e4 * tol:.0e}. "
+        "Check that sum(M) == N and that R is positive wherever Q needs mass."
+    )
+
+
 def calibrate_kl_soft(
     P: np.ndarray,
     M: np.ndarray,
     lam: float = 1.0,
     R: np.ndarray | None = None,
     A: np.ndarray | None = None,
-    max_iters: int = 1000,
-    tol: float = 1e-6,
+    tol: float = 1e-10,
     verbose: bool = False,
-    eps: float = 1e-300,
 ) -> KLCalibrationResult:
-    """Soft KL calibration with λ-weighted rank penalty.
+    """Soft KL calibration with a λ-weighted rank penalty.
 
-    Solves:
+    Solves exactly, as an exponential-cone program::
+
         min KL(Q||R) + λ·V_A(Q)  s.t.  Q ∈ C(M)
 
     Where:
-        - KL(Q||R) is the KL divergence from reference R
-        - V_A(Q) is the rank violation penalty using anchor A
-        - C(M) is row simplex + column sums = M
+        - KL(Q||R) = sum q log(q / r) is the divergence from the reference R
+        - V_A(Q) sums every adjacent downward step, (q_lower - q_upper)_+,
+          within each column in the order of the anchor A
+        - C(M) is rows on the simplex with column sums equal to M
+
+    At λ = 0 this is the KL projection onto C(M), which IPF also computes;
+    for λ large enough the penalty is exact and the result equals
+    :func:`calibrate_kl`.
 
     Args:
         P: Input probability matrix of shape (N, J).
-        M: Target column sums of shape (J,).
+        M: Target column sums of shape (J,). Must sum to N.
         lam: Rank penalty weight. Larger = more isotonic.
         R: Reference for KL divergence. Default: P.
         A: Anchor for rank ordering. Default: P.
-        max_iters: Maximum iterations.
-        tol: Convergence tolerance.
-        verbose: Enable debug logging.
-        eps: Numerical stability constant.
+        tol: Solver gap and feasibility tolerance.
+        verbose: Print the solver log.
 
     Returns:
-        KLCalibrationResult with calibrated matrix.
+        KLCalibrationResult with the calibrated matrix.
+
+    Raises:
+        CalibrationError: If the inputs are invalid, λ is negative, R or A has
+            the wrong shape or R a negative entry, or the solver fails.
 
     Examples:
         >>> import numpy as np
         >>> from rank_preserving_calibration import calibrate_kl_soft
         >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
         >>> M = np.array([0.8, 0.8, 0.4])
-        >>> result = calibrate_kl_soft(P, M, lam=10.0)  # Strong rank enforcement
-        >>> result = calibrate_kl_soft(P, M, lam=0.1)  # Weak rank enforcement
+        >>> strong = calibrate_kl_soft(P, M, lam=10.0)
+        >>> weak = calibrate_kl_soft(P, M, lam=0.0)
+        >>> bool(strong.max_rank_violation <= weak.max_rank_violation)
+        True
     """
     _configure_logging(verbose)
-    _, J = _validate_inputs(P, M, max_iters, tol, feasibility_tol=0.1)
-
-    P = np.asarray(P, dtype=np.float64)
-    M = np.asarray(M, dtype=np.float64)
-
-    R = P.copy() if R is None else np.asarray(R, dtype=np.float64)
-
-    A = P.copy() if A is None else np.asarray(A, dtype=np.float64)
-
-    column_orders = [np.argsort(A[:, j], kind="mergesort") for j in range(J)]
-
-    # Initialize
-    Q = np.maximum(P.copy(), eps)
-    Q = _project_row_kl_simplex(Q, eps=eps)
-
-    converged = False
-    final_change = float("inf")
-    iteration = 0
-
-    for iteration in range(1, max_iters + 1):
-        Q_prev = Q.copy()
-
-        # Gradient of KL(Q||R) w.r.t. Q: log(Q) - log(R) + 1
-        # For multiplicative gradient descent, use: Q * grad
-        # Take exponentiated gradient step: Q_new = Q * exp(-step * grad)
-        step = 0.1 / (1 + iteration * 0.01)
-
-        # KL gradient component
-        kl_grad = _safe_log(Q, eps) - _safe_log(R, eps) + 1.0
-
-        # Rank penalty gradient (subgradient)
-        rank_grad = np.zeros_like(Q)
-        for j in range(J):
-            idx = column_orders[j]
-            q_sorted = Q[idx, j]
-            for i in range(len(q_sorted) - 1):
-                if q_sorted[i] > q_sorted[i + 1]:
-                    rank_grad[idx[i], j] += 1.0
-                    rank_grad[idx[i + 1], j] -= 1.0
-
-        # Combined gradient
-        total_grad = kl_grad + lam * rank_grad
-
-        # Multiplicative update (exponentiated gradient)
-        Q = Q * np.exp(-step * total_grad)
-        Q = np.maximum(Q, eps)
-
-        # Project onto row simplex
-        Q = _project_row_kl_simplex(Q, eps=eps)
-
-        # Project columns onto sum constraints
-        for j in range(J):
-            current_sum = Q[:, j].sum()
-            if current_sum > eps:
-                Q[:, j] *= M[j] / current_sum
-
-        # Convergence check
-        change_norm = np.linalg.norm(Q - Q_prev)
-        Q_norm = np.linalg.norm(Q_prev)
-        final_change = float(change_norm / (Q_norm + 1e-15))
-
-        if final_change < tol:
-            converged = True
-            break
-
-    # Final diagnostics
-    row_sums = Q.sum(axis=1)
-    col_sums = Q.sum(axis=0)
-    max_row_error = float(np.max(np.abs(row_sums - 1.0)))
-    max_col_error = float(np.max(np.abs(col_sums - M)))
-    max_rank_violation = _compute_rank_violation(Q, A)
-    kl_divergence = _kl_div_matrix(Q, R, eps=eps)
-
-    if not converged:
-        warnings.warn(
-            f"KL soft calibration did not converge after {iteration} iterations. "
-            f"Final change: {final_change:.2e}",
-            UserWarning,
-            stacklevel=2,
-        )
-
-    return KLCalibrationResult(
-        Q=Q,
-        converged=converged,
-        iterations=iteration,
-        kl_divergence=kl_divergence,
-        max_row_error=max_row_error,
-        max_col_error=max_col_error,
-        max_rank_violation=max_rank_violation,
-        final_change=final_change,
-    )
-
-
-# ---------------------------------------------------------------------
-# Pareto frontier solver
-# ---------------------------------------------------------------------
+    if lam < 0:
+        raise CalibrationError("lam must be non-negative")
+    P, M, R, A = _prepare_kl(P, M, R, A, tol)
+    Q, iterations, _ = _solve_kl(R, A, M, float(lam), tol, verbose)
+    return _kl_result(Q, R, A, M, iterations)
 
 
 def calibrate_kl_pareto(
@@ -614,29 +499,26 @@ def calibrate_kl_pareto(
     lambda_grid: list[float] | np.ndarray | None = None,
     R: np.ndarray | None = None,
     A: np.ndarray | None = None,
-    max_iters: int = 500,
-    tol: float = 1e-5,
+    tol: float = 1e-10,
     verbose: bool = False,
-    eps: float = 1e-300,
 ) -> KLParetoResult:
-    """Compute Pareto frontier of KL divergence vs rank violation.
+    """Compute the frontier of KL divergence against rank violation.
 
-    Sweeps over λ values with warm starting, reporting the full
-    Pareto frontier rather than a single tuned point.
+    Solves :func:`calibrate_kl_soft` at each λ, reporting the whole path rather
+    than a single tuned point. Because each solve is exact, KL is
+    non-decreasing and the rank penalty non-increasing along the path.
 
     Args:
         P: Input probability matrix of shape (N, J).
         M: Target column sums of shape (J,).
-        lambda_grid: Grid of λ values to sweep. Default: geometric grid.
+        lambda_grid: λ values to solve at. Default: 20 points from 0.01 to 1000.
         R: Reference for KL divergence. Default: P.
         A: Anchor for rank ordering. Default: P.
-        max_iters: Max iterations per λ value.
-        tol: Convergence tolerance.
-        verbose: Enable debug logging.
-        eps: Numerical stability constant.
+        tol: Solver gap and feasibility tolerance.
+        verbose: Print the solver logs.
 
     Returns:
-        KLParetoResult with solutions along the frontier.
+        KLParetoResult with solutions along the frontier, in increasing λ.
 
     Examples:
         >>> import numpy as np
@@ -647,43 +529,18 @@ def calibrate_kl_pareto(
         >>> len(result.solutions) == len(result.kl_values) == len(result.lambda_path)
         True
     """
-    _configure_logging(verbose)
-    _validate_inputs(P, M, max_iters, tol, feasibility_tol=0.1)
-
-    P = np.asarray(P, dtype=np.float64)
-    M = np.asarray(M, dtype=np.float64)
-
-    R = P.copy() if R is None else np.asarray(R, dtype=np.float64)
-
-    A = P.copy() if A is None else np.asarray(A, dtype=np.float64)
-
-    if lambda_grid is None:
-        lambda_grid = np.logspace(-2, 3, 20)
-    else:
-        lambda_grid = np.asarray(lambda_grid)
-
-    column_orders = [np.argsort(A[:, j], kind="mergesort") for j in range(A.shape[1])]
+    _validate_inputs(P, M, max_iters=1, tol=tol, feasibility_tol=0.0)
+    grid = np.logspace(-2, 3, 20) if lambda_grid is None else lambda_grid
+    A_ = np.asarray(P if A is None else A, dtype=np.float64)
+    column_orders = [np.argsort(A_[:, j], kind="mergesort") for j in range(A_.shape[1])]
 
     result = KLParetoResult()
-
-    for lam in sorted(lambda_grid):
-        Q = calibrate_kl_soft(
-            P,
-            M,
-            lam=float(lam),
-            R=R,
-            A=A,
-            max_iters=max_iters,
-            tol=tol,
-            verbose=False,
-            eps=eps,
-        ).Q
-
-        result.solutions.append((float(lam), Q.copy()))
-        result.kl_values.append(_kl_div_matrix(Q, R, eps=eps))
+    for lam in sorted(float(x) for x in grid):
+        sol = calibrate_kl_soft(P, M, lam=lam, R=R, A=A, tol=tol, verbose=verbose)
+        result.solutions.append((lam, sol.Q.copy()))
+        result.kl_values.append(sol.kl_divergence)
         result.rank_violations.append(
-            _compute_rank_penalty_from_orders(Q, column_orders)
+            _compute_rank_penalty_from_orders(sol.Q, column_orders)
         )
-        result.lambda_path.append(float(lam))
-
+        result.lambda_path.append(lam)
     return result

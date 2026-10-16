@@ -6,7 +6,6 @@ import pytest
 from rank_preserving_calibration import (
     CalibrationError,
     calibrate,
-    calibrate_admm,
     calibrate_dykstra,
     calibrate_ipf,
     calibrate_kl,
@@ -14,13 +13,11 @@ from rank_preserving_calibration import (
     calibrate_kl_soft,
     calibrate_qp,
     calibrate_soft,
-    calibrate_soft_admm,
     calibrate_two_stage,
 )
 
 SOLVERS = [
     calibrate,
-    calibrate_admm,
     calibrate_dykstra,
     calibrate_ipf,
     calibrate_kl,
@@ -28,7 +25,6 @@ SOLVERS = [
     calibrate_kl_soft,
     calibrate_qp,
     calibrate_soft,
-    calibrate_soft_admm,
     calibrate_two_stage,
 ]
 
@@ -59,10 +55,9 @@ def test_rejects_malformed_input(solver, P, M, message):
         solver(P, M)
 
 
-@pytest.mark.parametrize("solver", [calibrate_soft, calibrate_soft_admm])
-def test_soft_solvers_reject_negative_penalties(solver):
+def test_soft_rejects_negative_penalties():
     with pytest.raises(CalibrationError, match="non-negative"):
-        solver(P_OK, M_OK, lam_m=-1.0)
+        calibrate_soft(P_OK, M_OK, lam_m=-1.0)
 
 
 # Rows summing to 1 force the column total to N = 3, so M summing to 3.3

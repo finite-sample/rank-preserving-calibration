@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `calibrate_kl` stopped short of the optimum it claimed: on a 30-row problem
+  its KL was 1.5443 against a true constrained optimum of 1.5345. It is now
+  solved exactly as an exponential-cone program (Clarabel). It solves the
+  rank-penalised program at a weight certified large enough to leave no
+  violations, because posing the isotonic constraints directly stalls the
+  interior-point solver.
+- `calibrate_kl_soft` never converged, and above λ ≈ 10 a larger penalty gave
+  more rank violation (#37). It is now the same exponential-cone program, exact
+  at every λ, so `calibrate_kl_pareto` traces a monotone frontier.
+- `calibrate_soft` stopped far from its optimum whenever `lam_r > 0`: its rank
+  step was ten subgradient iterations. At `lam_r = 1` it reported convergence
+  at an objective of 0.548 against a true 0.290. It is now ADMM with the exact
+  proximal operator of the rank penalty and stops on primal and dual
+  residuals.
+- `nearly` with any mode other than `"epsilon"` was silently treated as strict
+  isotonic; it now raises.
 - `ties="group"` returned garbage from `calibrate_dykstra` and `calibrate_admm`.
   The weighted isotonic step expanded each pooled block by its weight instead
   of its element count, writing past the end of the output. ADMM also passed
@@ -38,6 +54,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it could not converge; several examples used targets the input already met.
 
 ### Removed
+- `calibrate_admm`, `ADMMResult` and `calibrate(method="admm")` (#39). Its
+  returned matrix was always `calibrate_dykstra`'s, recomputed from `P`, and
+  its `nearly={"mode": "lambda"}` option never reached the output. Penalised
+  rank violations are `calibrate_soft`.
+- `calibrate_soft_admm`, merged into `calibrate_soft`.
+- The `max_iters` and `eps` arguments of the KL solvers, which no longer
+  iterate.
 - `classwise_ece(balanced=...)`. It weighted bins, not classes, so it did not
   do what it said.
 - Two compiled helpers that nothing called.

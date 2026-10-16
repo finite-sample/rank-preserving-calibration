@@ -13,7 +13,7 @@ import warnings
 import numpy as np
 import pytest
 
-from rank_preserving_calibration import calibrate_admm, calibrate_dykstra
+from rank_preserving_calibration import calibrate_dykstra
 from rank_preserving_calibration.calibration import (
     _project_column_isotonic_sum,
     _project_row_simplex,
@@ -328,38 +328,6 @@ class TestNumericalStability:
 
         z_prox = prox_near_isotonic(v, lam=1.0)
         assert np.allclose(z_prox, v, atol=1e-10), "Already isotonic prox failed"
-
-
-class TestADMMGuarantees:
-    """Test ADMM-specific guarantees."""
-
-    def test_admm_constraint_satisfaction(self):
-        """Test that ADMM satisfies constraints after polishing."""
-        P = np.array([[0.7, 0.3], [0.4, 0.6], [0.6, 0.4]])
-        M = np.array([1.5, 1.5])
-
-        result = calibrate_admm(P, M, max_iters=500)
-
-        # Should satisfy all constraints after final polishing
-        assert np.allclose(result.Q.sum(axis=1), 1.0, atol=1e-10)
-        assert np.allclose(result.Q.sum(axis=0), M, atol=1e-8)
-        assert np.all(result.Q >= -1e-10)
-
-    def test_admm_objective_decrease(self):
-        """Test that ADMM objective generally decreases."""
-        P = np.array([[0.8, 0.2], [0.3, 0.7], [0.5, 0.5]])
-        M = np.array([1.4, 1.6])
-
-        result = calibrate_admm(P, M, max_iters=100, verbose=False)
-
-        # Should have recorded objectives
-        assert len(result.objective_values) > 0
-
-        # Later objectives should generally be smaller than early ones
-        if len(result.objective_values) > 20:
-            early_avg = np.mean(result.objective_values[5:10])
-            late_avg = np.mean(result.objective_values[-5:])
-            assert late_avg <= early_avg + 1e-6, "Objective not decreasing in ADMM"
 
 
 if __name__ == "__main__":

@@ -22,6 +22,7 @@ from rank_preserving_calibration import (
     KLCalibrationResult,
     KLParetoResult,
     calibrate_dykstra,
+    calibrate_ipf,
     calibrate_kl,
     calibrate_kl_pareto,
     calibrate_kl_soft,
@@ -30,11 +31,6 @@ from rank_preserving_calibration import (
     prox_kl_near_isotonic,
     reverse_kl_divergence,
     symmetrized_kl,
-)
-from rank_preserving_calibration.kl_calibration import (
-    _kl_isotonic_regression,
-    _project_column_kl_isotonic_sum,
-    _project_row_kl_simplex,
 )
 
 from .data_helpers import create_test_case
@@ -101,121 +97,73 @@ class TestCalibrateKL:
         assert result.kl_divergence >= 0
 
 
-class TestKLColumnProjection:
-    """Test KL isotonic regression and column projection."""
-
-    def test_already_isotonic_unchanged(self):
-        """Already isotonic sequence should be unchanged (up to rescaling)."""
-        y = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
-        z = _kl_isotonic_regression(y)
-
-        diffs = np.diff(z)
-        assert np.all(diffs >= 0), "Isotonic regression broke monotonicity"
-
-    def test_geometric_mean_pooling(self):
-        """Test that pooling uses geometric mean, not arithmetic."""
-        y = np.array([0.4, 0.1])
-        z = _kl_isotonic_regression(y)
-
-        assert np.allclose(z[0], z[1])
-        expected = np.sqrt(0.4 * 0.1)
-        assert np.allclose(z[0], expected, rtol=1e-6), (
-            f"Expected geometric mean {expected}, got {z[0]}"
-        )
-
-    def test_three_element_geometric_mean(self):
-        """Test geometric mean for three elements that need pooling."""
-        y = np.array([0.8, 0.1, 0.05])
-        z = _kl_isotonic_regression(y)
-
-        assert np.allclose(z[0], z[1])
-        assert np.allclose(z[1], z[2])
-        expected = np.exp(np.mean(np.log(y)))
-        assert np.allclose(z[0], expected, rtol=1e-6)
-
-    def test_multiplicative_rescaling(self):
-        """Test that sum constraint uses multiplicative (not additive) rescaling."""
-        column = np.array([0.1, 0.3, 0.2, 0.4])
-        order = np.argsort(column)
-        target_sum = 2.0
-
-        projected = _project_column_kl_isotonic_sum(column, order, target_sum)
-
-        assert np.allclose(projected.sum(), target_sum, rtol=1e-6)
-        projected_sorted = projected[order]
-        diffs = np.diff(projected_sorted)
-        assert np.all(diffs >= -1e-10), "Isotonicity violated"
-
-    def test_column_projection_preserves_order(self):
-        """Test that column projection preserves rank ordering."""
-        column = np.array([0.5, 0.1, 0.3, 0.8, 0.2])
-        order = np.argsort(column)
-        target_sum = 1.5
-
-        projected = _project_column_kl_isotonic_sum(column, order, target_sum)
-
-        projected_sorted = projected[order]
-        diffs = np.diff(projected_sorted)
-        assert np.all(diffs >= -1e-10)
-
-
-class TestKLRowProjection:
-    """Test KL row simplex projection."""
-
-    def test_row_projection_sums_to_one(self):
-        """Test that row projection produces rows summing to 1."""
-        rows = np.array([[0.5, 0.3, 0.2], [1.0, 2.0, 3.0], [0.1, 0.1, 0.1]])
-        projected = _project_row_kl_simplex(rows)
-
-        row_sums = projected.sum(axis=1)
-        assert np.allclose(row_sums, 1.0)
-
-    def test_row_projection_nonnegative(self):
-        """Test that row projection produces non-negative values."""
-        rows = np.array([[0.5, 0.3, 0.2], [1.0, 2.0, 3.0]])
-        projected = _project_row_kl_simplex(rows)
-
-        assert np.all(projected >= 0)
-
-    def test_row_projection_multiplicative(self):
-        """Test that KL row projection is multiplicative normalization."""
-        rows = np.array([[2.0, 4.0, 6.0]])
-        projected = _project_row_kl_simplex(rows)
-
-        expected = rows / rows.sum(axis=1, keepdims=True)
-        assert np.allclose(projected, expected)
+def _shifted_problem(N=30, J=3, seed=0):
+    rng = np.random.default_rng(seed)
+    P = rng.dirichlet(np.ones(J), size=N)
+    M = P.sum(axis=0) * np.linspace(1.3, 0.7, J)
+    return P, M * N / M.sum()
 
 
 class TestCalibrateKLSoft:
-    """Test soft KL calibration with lambda penalty."""
+    """calibrate_kl_soft checked against problems with a known answer."""
 
-    def test_basic_soft_calibration(self):
-        """Test basic soft calibration functionality."""
-        P, M = create_test_case("random", N=15, J=3, seed=42)
+    def test_no_penalty_is_the_kl_projection_ipf_computes(self):
+        # min KL(Q||P) over rows-on-simplex and column sums M is what IPF
+        # (Sinkhorn) converges to, by a different algorithm entirely.
+        P, M = _shifted_problem()
+        ipf = calibrate_ipf(P, M, max_iters=10000, tol=1e-14).Q
+        np.testing.assert_allclose(calibrate_kl_soft(P, M, lam=0.0).Q, ipf, atol=1e-7)
 
-        result = calibrate_kl_soft(P, M, lam=1.0, verbose=False)
+    def test_large_penalty_equals_the_hard_problem(self):
+        P, M = _shifted_problem()
+        soft = calibrate_kl_soft(P, M, lam=1e4)
+        hard = calibrate_kl(P, M)
+        assert soft.max_rank_violation < 1e-8
+        # KL is flat at its minimum, so the value is pinned far more tightly
+        # than the matrix: 1e-10 against ~1e-6 here.
+        assert soft.kl_divergence == pytest.approx(hard.kl_divergence, abs=1e-8)
+        np.testing.assert_allclose(soft.Q, hard.Q, atol=1e-5)
 
-        assert isinstance(result, KLCalibrationResult)
-        assert result.Q.shape == P.shape
-        assert np.all(result.Q >= 0)
+    def test_constraints_hold_at_every_penalty(self):
+        P, M = _shifted_problem()
+        for lam in (0.0, 0.1, 10.0):
+            result = calibrate_kl_soft(P, M, lam=lam)
+            assert result.max_row_error < 1e-8
+            assert result.max_col_error < 1e-8
 
-    def test_lambda_effect_on_rank_violation(self):
-        """Test that higher lambda tends to reduce rank violations (soft constraint)."""
-        P, M = create_test_case("random", N=20, J=3, seed=123)
+    def test_rejects_negative_penalty(self):
+        P, M = _shifted_problem()
+        with pytest.raises(CalibrationError, match="lam"):
+            calibrate_kl_soft(P, M, lam=-1.0)
 
-        result_low = calibrate_kl_soft(P, M, lam=0.1, max_iters=2000, verbose=False)
-        result_mid = calibrate_kl_soft(P, M, lam=1.0, max_iters=2000, verbose=False)
 
-        assert result_mid.max_rank_violation <= result_low.max_rank_violation + 0.1
+class TestCalibrateKLOptimality:
+    def test_reaches_the_constrained_optimum(self):
+        """The alternating-projection version stopped at KL 1.5443 here."""
+        cp = pytest.importorskip("cvxpy")
+        P, M = _shifted_problem()
+        N, J = P.shape
+        Q = cp.Variable((N, J))
+        cons = [cp.sum(Q, axis=1) == 1, cp.sum(Q, axis=0) == M]
+        for j in range(J):
+            o = np.argsort(P[:, j], kind="mergesort")
+            cons.append(Q[o[1:], j] >= Q[o[:-1], j])
+        problem = cp.Problem(cp.Minimize(cp.sum(cp.kl_div(Q, P))), cons)
+        problem.solve(
+            solver=cp.CLARABEL, tol_gap_abs=1e-10, tol_gap_rel=1e-10, tol_feas=1e-10
+        )
+        assert problem.status == "optimal"
 
-    def test_soft_row_simplex_maintained(self):
-        """Test that rows approximately sum to 1 in soft calibration."""
-        P, M = create_test_case("random", N=15, J=3, seed=456)
+        result = calibrate_kl(P, M)
+        assert result.kl_divergence == pytest.approx(problem.value, abs=1e-7)
+        assert result.max_rank_violation < 1e-8
 
-        result = calibrate_kl_soft(P, M, lam=10.0, max_iters=2000, verbose=False)
-
-        row_sums = result.Q.sum(axis=1)
-        assert np.allclose(row_sums, 1.0, atol=1e-3)
+    def test_beats_another_feasible_point(self):
+        # Dykstra's Euclidean projection satisfies the same constraints, so its
+        # KL can only be higher.
+        P, M = _shifted_problem(seed=3)
+        Q_euclid = calibrate_dykstra(P, M).Q
+        assert calibrate_kl(P, M).kl_divergence <= kl_divergence(Q_euclid, P) + 1e-9
 
 
 class TestAnchorReferenceDecoupling:
@@ -297,19 +245,13 @@ class TestKLPareto:
         assert len(result.kl_values) == len(result.solutions)
         assert len(result.rank_violations) == len(result.solutions)
 
-    def test_pareto_monotonicity(self):
-        """Test that rank violations tend to decrease as lambda increases."""
-        P, M = create_test_case("random", N=20, J=3, seed=123)
-        lambda_grid = [0.01, 0.1, 1.0]
-
-        result = calibrate_kl_pareto(
-            P, M, lambda_grid=lambda_grid, max_iters=1000, verbose=False
-        )
-
-        if len(result.rank_violations) >= 2:
-            first_viol = result.rank_violations[0]
-            last_viol = result.rank_violations[-1]
-            assert last_viol <= first_viol + 0.5
+    def test_pareto_is_monotone(self):
+        """Exact solves trade KL for rank penalty, never both at once."""
+        P, M = _shifted_problem()
+        result = calibrate_kl_pareto(P, M)
+        assert np.all(np.diff(result.kl_values) >= -1e-7)
+        assert np.all(np.diff(result.rank_violations) <= 1e-7)
+        assert result.lambda_path == sorted(result.lambda_path)
 
     def test_pareto_solutions_valid(self):
         """Test that all Pareto solutions satisfy basic constraints."""
@@ -320,7 +262,7 @@ class TestKLPareto:
 
         for _, Q in result.solutions:
             row_sums = Q.sum(axis=1)
-            assert np.allclose(row_sums, 1.0, atol=0.1)
+            assert np.allclose(row_sums, 1.0, atol=1e-8)
             assert np.all(Q >= -1e-10)
 
 
@@ -450,6 +392,78 @@ class TestKLInputValidation:
 
         with pytest.raises(CalibrationError):
             calibrate_kl(P, M, A=A)
+
+
+class TestKLReferenceEdges:
+    @staticmethod
+    def _zeroed(P, rows):
+        R = P.copy()
+        R[rows, [0, 1, 2]] = 0.0
+        return R / R.sum(axis=1, keepdims=True)
+
+    def test_zero_reference_entries_get_zero_mass(self):
+        # KL(Q||R) is infinite unless q = 0 wherever r = 0; the solver imposes
+        # that directly, since the cone has no interior there. Zeros on each
+        # column's lowest-ranked row keep the hard problem feasible.
+        P, M = _shifted_problem(N=12)
+        lowest = [int(np.argmin(P[:, j])) for j in range(3)]
+        R = self._zeroed(P, lowest)
+        for result in (calibrate_kl(P, M, R=R), calibrate_kl_soft(P, M, lam=1.0, R=R)):
+            np.testing.assert_allclose(result.Q[lowest, [0, 1, 2]], 0.0, atol=1e-12)
+            assert result.max_row_error < 1e-8
+            assert result.max_col_error < 1e-8
+            assert np.isfinite(result.kl_divergence)
+
+    def test_zero_high_in_the_order_makes_the_hard_problem_infeasible(self):
+        # A zero at rank 10 of 12 forces 11 entries of that column to zero, so
+        # its total cannot be met; the soft problem only pays for the steps.
+        P, M = _shifted_problem(N=12)
+        R = self._zeroed(P, [0, 5, 9])
+        with pytest.raises(CalibrationError, match="probably infeasible"):
+            calibrate_kl(P, M, R=R)
+        soft = calibrate_kl_soft(P, M, lam=1.0, R=R)
+        np.testing.assert_allclose(soft.Q[[0, 5, 9], [0, 1, 2]], 0.0, atol=1e-12)
+
+    def test_rejects_negative_reference(self):
+        P, M = _shifted_problem(N=6)
+        R = P.copy()
+        R[0, 0] = -0.1
+        with pytest.raises(CalibrationError, match="non-negative"):
+            calibrate_kl(P, M, R=R)
+
+    def test_soft_raises_on_infeasible_targets(self):
+        P, M = _shifted_problem(N=6)
+        with (
+            pytest.warns(UserWarning, match="must equal N"),
+            pytest.raises(CalibrationError, match="status"),
+        ):
+            calibrate_kl_soft(P, M * 1.1, lam=1.0)
+
+
+class TestKLConfidentClassifiers:
+    """Near-one-hot references, where the solver used to stall."""
+
+    def test_reference_entries_near_zero(self):
+        # Codex's case on #43: the smallest reference value is 1.4e-10, and
+        # with r itself inside the exponential cone the default solve stalled.
+        rng = np.random.default_rng(6)
+        P = rng.dirichlet(np.full(2, 0.2), size=5)
+        M = P.sum(axis=0) * np.array([1.1, 0.9])
+        M *= 5 / M.sum()
+        for result in (calibrate_kl(P, M), calibrate_kl_soft(P, M, lam=1.0)):
+            assert result.max_col_error < 1e-7
+            assert result.max_row_error < 1e-7
+
+    @pytest.mark.parametrize("seed", range(8))
+    def test_peaked_problems_solve(self, seed):
+        rng = np.random.default_rng(seed)
+        P = rng.dirichlet(np.full(3, 0.2), size=40)
+        M = P.sum(axis=0) * np.array([1.2, 1.0, 0.8])
+        M *= 40 / M.sum()
+        hard = calibrate_kl(P, M)
+        assert hard.max_rank_violation < 1e-6
+        assert hard.max_col_error < 1e-6
+        assert calibrate_kl_soft(P, M, lam=1.0).max_col_error < 1e-6
 
 
 if __name__ == "__main__":

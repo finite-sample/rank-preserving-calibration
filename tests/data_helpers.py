@@ -302,7 +302,7 @@ def analyze_calibration_result(P: np.ndarray, result, M: np.ndarray) -> dict:
     ----------
     P : np.ndarray
         Original probability matrix.
-    result : CalibrationResult or ADMMResult
+    result : CalibrationResult
         Calibration result object.
     M : np.ndarray
         Target marginals.

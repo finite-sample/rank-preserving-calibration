@@ -18,7 +18,6 @@ import numpy as np
 import pytest
 
 from rank_preserving_calibration import (
-    calibrate_admm,
     calibrate_dykstra,
     calibrate_ovr_isotonic,
 )
@@ -112,51 +111,6 @@ class TestToleranceChecksAreAbsolute:
         if result.converged:
             assert result.max_row_error < 1e-8
             assert result.max_col_error < 1e-8
-
-
-# --------------------------------------------------------------------------- #
-# Defect 2: the ADMM Q-update was misderived
-# --------------------------------------------------------------------------- #
-
-
-class TestADMMSolvesTheStatedProblem:
-    """The Q-update treated row/column SUM targets as per-ELEMENT targets.
-
-    ``Q = (P + rho*(Z1[:, None] + Z2[None, :])) / (1 + 2*rho)`` pulls every entry
-    toward the row target and the column target, rather than pulling the row
-    *sum* toward the row target. With J classes and a row target of 1, each row
-    was driven toward J*(1 + M_j)/2 -- so the update could not satisfy its own
-    constraints for any rho.
-    """
-
-    @pytest.mark.parametrize("seed", range(3))
-    def test_admm_converges_on_ordinary_feasible_problems(self, seed):
-        """It failed on every size tried in the audit, from N=25 up."""
-        P, M = feasible_problem(seed, N=25, J=4)
-        result = calibrate_admm(P, M, max_iters=5000, tol=1e-8)
-        assert result.converged, (
-            f"ADMM did not converge on a feasible N=25 problem "
-            f"(row error {result.max_row_error:.2e})"
-        )
-
-    def test_admm_output_satisfies_the_constraints(self):
-        """Valid rows, matching totals, and no rank violations."""
-        P, M = feasible_problem(5, N=25, J=4)
-        Q = calibrate_admm(P, M, max_iters=5000, tol=1e-8).Q
-        assert np.allclose(Q.sum(axis=1), 1.0, atol=1e-6, rtol=0.0)
-        assert np.allclose(Q.sum(axis=0), M, atol=1e-6, rtol=0.0)
-        assert rank_violations(P, Q) == 0
-
-    def test_admm_agrees_with_dykstra(self):
-        """Two solvers for one convex problem must find the same optimum."""
-        P, M = feasible_problem(6, N=25, J=4)
-        Q_admm = calibrate_admm(P, M, max_iters=5000, tol=1e-8).Q
-        Q_dyk = calibrate_dykstra(P, M, max_iters=20000, tol=1e-10).Q
-        obj_admm = float(np.sum((Q_admm - P) ** 2))
-        obj_dyk = float(np.sum((Q_dyk - P) ** 2))
-        assert obj_admm == pytest.approx(obj_dyk, abs=1e-4), (
-            f"ADMM objective {obj_admm:.6f} vs Dykstra {obj_dyk:.6f}"
-        )
 
 
 # --------------------------------------------------------------------------- #

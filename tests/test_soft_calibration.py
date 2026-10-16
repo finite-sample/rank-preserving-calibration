@@ -11,7 +11,6 @@ from rank_preserving_calibration import (
     CalibrationError,
     SoftCalibrationResult,
     calibrate_soft,
-    calibrate_soft_admm,
 )
 
 from .data_helpers import create_test_case
@@ -97,46 +96,13 @@ class TestCalibratesoft:
             assert second_half_mean <= first_half_mean * 1.1
 
 
-class TestCalibrateSoftADMM:
-    """Test ADMM-based soft calibration."""
-
-    def test_basic_functionality(self):
-        """Test basic ADMM soft calibration."""
-        P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2], [0.2, 0.3, 0.5]])
-        M = np.array([1.0, 1.0, 1.0])
-
-        result = calibrate_soft_admm(P, M, lam_m=1.0, lam_r=10.0)
-
-        assert isinstance(result, SoftCalibrationResult)
-        assert result.Q.shape == P.shape
-        assert result.iterations > 0
-
-    def test_vs_gradient_descent(self):
-        """Test that ADMM and gradient descent both produce valid outputs."""
-        P = np.array([[0.6, 0.4], [0.3, 0.7], [0.5, 0.5]])
-        M = np.array([1.4, 1.6])
-
-        result_gd = calibrate_soft(P, M, lam_m=1.0, lam_r=5.0, max_iters=500)
-        result_admm = calibrate_soft_admm(P, M, lam_m=1.0, lam_r=5.0, max_iters=500)
-
-        # Both should produce valid probability matrices
-        assert np.allclose(result_gd.Q.sum(axis=1), 1.0, atol=1e-6)
-        assert np.allclose(result_admm.Q.sum(axis=1), 1.0, atol=1e-6)
-        assert np.all(result_gd.Q >= -1e-10)
-        assert np.all(result_admm.Q >= -1e-10)
-
-    def test_rho_parameter(self):
-        """Test effect of rho parameter."""
-        P = np.array([[0.6, 0.4], [0.3, 0.7], [0.5, 0.5]])
-        M = np.array([1.2, 1.8])
-
-        # Different rho values should converge to similar solutions
-        result_rho1 = calibrate_soft_admm(P, M, lam_m=1.0, lam_r=10.0, rho=0.5)
-        result_rho2 = calibrate_soft_admm(P, M, lam_m=1.0, lam_r=10.0, rho=2.0)
-
-        # Both should satisfy row simplex
-        assert np.allclose(result_rho1.Q.sum(axis=1), 1.0, atol=1e-6)
-        assert np.allclose(result_rho2.Q.sum(axis=1), 1.0, atol=1e-6)
+class TestADMMParameter:
+    def test_rho_changes_the_path_not_the_answer(self):
+        """rho only conditions the splitting; the optimum is the same."""
+        P, M = create_test_case("random", N=12, J=3, seed=4)
+        Q1 = calibrate_soft(P, M, lam_m=1.0, lam_r=0.5, rho=0.5).Q
+        Q2 = calibrate_soft(P, M, lam_m=1.0, lam_r=0.5, rho=2.0).Q
+        np.testing.assert_allclose(Q1, Q2, atol=1e-6)
 
 
 class TestSoftCalibrationValidation:
