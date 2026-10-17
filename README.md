@@ -42,7 +42,7 @@ asserts they agree — so the choice is practical:
 | method | how | when |
 |---|---|---|
 | `"qp"` (default) | sparse quadratic program, interior point | always |
-| `"dykstra"` | alternating projections, numpy only | reference implementation; useful if you cannot take the solver dependency |
+| `"dykstra"` | alternating projections in numpy | reference implementation the QP is tested against |
 
 The default is not a close call. Measured at `J=4` on feasible targets:
 

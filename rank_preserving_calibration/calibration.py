@@ -483,7 +483,9 @@ def _compute_rank_violation(Q: np.ndarray, P: np.ndarray) -> float:
     max_violation = 0.0
     _, J = Q.shape
     for j in range(J):
-        idx = np.argsort(P[:, j])  # order by original model scores
+        # Stable, like the constraints: tied scores keep their row order, so
+        # a tie never reads as a violation.
+        idx = np.argsort(P[:, j], kind="mergesort")
         q_sorted = Q[idx, j]
         if q_sorted.size > 1:
             diffs = np.diff(q_sorted)

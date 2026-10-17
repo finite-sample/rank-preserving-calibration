@@ -48,6 +48,15 @@ read Removed before upgrading.
   isotonic; it now raises.
 - `calibrate_kl_pareto` returned an empty frontier on malformed input instead
   of raising.
+- Rank-violation diagnostics sorted tied scores with an unstable sort while
+  the constraints used a stable one, so ties could read as violations. With
+  the new certificate that made `calibrate_kl` reject feasible problems with
+  tied scores. Every diagnostic now uses the stable order.
+- `project_near_kl_isotonic` returned a feasible point that was not the KL
+  projection whenever `eps_slack > 0`: it pooled without the weights the slack
+  substitution introduces. It now matches an independent solver. Combining
+  `sum_target` with non-uniform weights, which rescaling cannot make exact,
+  now raises.
 - `classwise_ece` returned the sum of the per-class ECEs instead of their mean,
   so it was too large by a factor of the number of classes. It now follows
   Kull et al. (2019), eq. 4.
@@ -55,8 +64,9 @@ read Removed before upgrading.
   calibrated column with flat runs depended on how the rows happened to be
   sorted. Tied scores now share their average rank, as in the standard
   Mann-Whitney AUC.
-- `informativeness_ratio` warned about an empty mean when every column of the
-  original was flat; `mean_column_ratio` is now NaN in that case.
+- `informativeness_ratio` warned about an empty mean when no column had a
+  finite ratio (every original column flat while a calibrated one varied);
+  `mean_column_ratio` is now NaN in that case.
 - Every docstring example runs and records its output, and the docs build runs
   them again. The quick start's targets did not sum to the number of rows, so
   it could not converge; several examples used targets the input already met.
