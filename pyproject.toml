@@ -132,6 +132,7 @@ DEP004 = ["pytest", "hypothesis", "pytest-cov", "cvxpy"]
 
 # "fro" is numpy's Frobenius-norm argument (np.linalg.norm(x, "fro")).
 [tool.codespell]
+builtin = "clear,rare,en-GB_to_en-US"
 ignore-words-list = "fro"
 
 [tool.pydoclint]
