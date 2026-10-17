@@ -524,10 +524,10 @@ class TestKLSlackProjection:
     """project_near_kl_isotonic against the convex problem it claims to solve."""
 
     @staticmethod
-    def _oracle(v, eps, w, s):
+    def _oracle(v, eps_slack, w, s):
         cp = pytest.importorskip("cvxpy")
         z = cp.Variable(len(v))
-        cons = [z[i + 1] >= (1 - eps) * z[i] for i in range(len(v) - 1)]
+        cons = [z[i + 1] >= (1 - eps_slack) * z[i] for i in range(len(v) - 1)]
         if s is not None:
             cons.append(cp.sum(z) == s)
         cp.Problem(cp.Minimize(cp.sum(cp.multiply(w, cp.kl_div(z, v)))), cons).solve(
@@ -536,19 +536,19 @@ class TestKLSlackProjection:
         return z.value
 
     @pytest.mark.parametrize(
-        ("eps", "weighted", "s"),
+        ("eps_slack", "weighted", "s"),
         [(0.5, False, 1.0), (0.2, False, None), (0.2, False, 3.0), (0.2, True, None)],
     )
-    def test_matches_the_kl_projection(self, eps, weighted, s):
+    def test_matches_the_kl_projection(self, eps_slack, weighted, s):
         from scipy.special import kl_div
 
         rng = np.random.default_rng(1)
-        v = np.array([0.6, 0.1, 0.3]) if eps == 0.5 else rng.uniform(0.05, 1, 12)
+        v = np.array([0.6, 0.1, 0.3]) if eps_slack == 0.5 else rng.uniform(0.05, 1, 12)
         w = rng.uniform(0.5, 3, v.size) if weighted else None
         ww = np.ones(v.size) if w is None else w
-        ours = project_near_kl_isotonic(v, eps, sum_target=s, weights=w)
-        expected = self._oracle(v, eps, ww, s)
-        assert np.all(ours[1:] >= (1 - eps) * ours[:-1] - 1e-12)
+        ours = project_near_kl_isotonic(v, eps_slack=eps_slack, sum_target=s, weights=w)
+        expected = self._oracle(v, eps_slack, ww, s)
+        assert np.all(ours[1:] >= (1 - eps_slack) * ours[:-1] - 1e-12)
         # The oracle is accurate to its own tolerance, so compare objectives.
         assert (ww * kl_div(ours, v)).sum() <= (ww * kl_div(expected, v)).sum() + 1e-7
 
