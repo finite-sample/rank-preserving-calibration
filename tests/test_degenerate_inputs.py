@@ -105,28 +105,20 @@ class TestNearlyIsotonic:
     @pytest.mark.parametrize("prox", [prox_near_isotonic, prox_kl_near_isotonic])
     def test_zero_penalty_is_the_identity(self, prox):
         np.testing.assert_allclose(prox(Y, 0.0), Y)
-        z, info = prox(Y, 0.0, return_info=True)
-        np.testing.assert_allclose(z, Y)
-        assert info["iterations"] == 0
 
-    def test_single_element_reports_zero_iterations(self):
-        _, info = prox_near_isotonic(np.array([0.4]), 1.0, return_info=True)
-        assert info == {"iterations": 0, "pr_res": 0.0, "du_res": 0.0}
+    def test_kl_prox_reports_its_iterations(self):
+        _, info = prox_kl_near_isotonic(Y, 0.0, return_info=True)
+        assert info["iterations"] == 0
         _, info = prox_kl_near_isotonic(np.array([0.4]), 1.0, return_info=True)
         assert info == {"iterations": 0, "converged": True}
-
-    def test_iteration_budget_is_reported(self):
-        _, info = prox_near_isotonic(Y, 1.0, max_iters=1, return_info=True)
-        assert info["iterations"] == 1
         _, info = prox_kl_near_isotonic(Y, 1.0, max_iters=1, return_info=True)
         assert info == {"iterations": 1, "converged": False}
 
     def test_prox_with_sum_is_a_translation(self):
         z = prox_near_isotonic(Y, 1.0)
-        shifted, info = prox_near_isotonic_with_sum(Y, 1.0, 10.0, return_info=True)
+        shifted = prox_near_isotonic_with_sum(Y, 1.0, 10.0)
         np.testing.assert_allclose(shifted, z + (10.0 - z.sum()) / Y.size)
         assert np.sum(shifted) == pytest.approx(10.0)
-        assert "iterations" in info
 
     def test_kl_slack_projection_with_weights_and_no_slack_is_kl_pav(self):
         expected = np.exp(isotonic_regression(np.log(Y), weights=W).x)
@@ -160,11 +152,6 @@ class TestSolverEdges:
         P, M = _problem()
         with pytest.warns(UserWarning, match="differs significantly"):
             calibrate_soft(P, M * 1.5)
-
-    def test_soft_warns_and_reports_an_unconverged_run(self):
-        P, M = _problem()
-        with pytest.warns(UserWarning, match="did not converge"):
-            assert not calibrate_soft(P, M, max_iters=1).converged
 
     def test_ipf_and_two_stage_report_an_unconverged_run(self):
         P, M = _problem()

@@ -9,7 +9,7 @@ inside the package, so it too is checked against cvxpy, not against scipy.
 import numpy as np
 import pytest
 
-from rank_preserving_calibration import calibrate_dykstra
+from rank_preserving_calibration import calibrate_dykstra, prox_near_isotonic
 from rank_preserving_calibration._isotonic import _isotonic_regression
 from rank_preserving_calibration.calibration import _project_row_simplex
 from rank_preserving_calibration.kl_nearly import _kl_pav_increasing
@@ -91,6 +91,27 @@ class TestIsotonicRegression:
     def test_rejects_bad_weights(self, weights, message):
         with pytest.raises(ValueError, match=message):
             _isotonic_regression(np.array([2.0, 1.0, 3.0, 0.0]), weights)
+
+
+class TestNearlyIsotonicProx:
+    """The dynamic-programming prox against the convex problem it solves."""
+
+    @pytest.mark.parametrize("n", [2, 3, 10, 60])
+    @pytest.mark.parametrize("lam", [1e-3, 0.05, 0.3, 1.0, 5.0])
+    def test_matches_qp(self, n, lam):
+        y = np.random.default_rng(n).normal(size=n) * 2
+        z = cp.Variable(n)
+        objective = 0.5 * cp.sum_squares(z - y) + lam * cp.sum(cp.pos(z[:-1] - z[1:]))
+        cp.Problem(cp.Minimize(objective)).solve(
+            solver=cp.CLARABEL, tol_gap_abs=1e-12, tol_gap_rel=1e-12, tol_feas=1e-12
+        )
+        np.testing.assert_allclose(prox_near_isotonic(y, lam), z.value, atol=1e-7)
+
+    def test_large_penalty_is_isotonic_regression(self):
+        y = np.random.default_rng(0).normal(size=200)
+        np.testing.assert_allclose(
+            prox_near_isotonic(y, 1e6), _isotonic_oracle(y, np.ones(y.size)), atol=1e-6
+        )
 
 
 class TestGroupedTies:
