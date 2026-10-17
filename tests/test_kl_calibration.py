@@ -552,6 +552,17 @@ class TestKLSlackProjection:
         # The oracle is accurate to its own tolerance, so compare objectives.
         assert (ww * kl_div(ours, v)).sum() <= (ww * kl_div(expected, v)).sum() + 1e-7
 
+    def test_long_feasible_input_is_its_own_projection(self):
+        # The pooling weights c^i reach exp(-760) at n = 1100, eps = 0.5; as
+        # plain floats they underflowed to 0 and the pooling divided 0 by 0.
+        import warnings
+
+        v = np.full(1100, 0.5)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            z = project_near_kl_isotonic(v, eps_slack=0.5)
+        np.testing.assert_allclose(z, v, atol=1e-12)
+
     def test_weighted_with_a_sum_target_raises(self):
         with pytest.raises(ValueError, match="uniform weights"):
             project_near_kl_isotonic(

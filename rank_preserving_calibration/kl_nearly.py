@@ -147,34 +147,35 @@ def project_near_kl_isotonic(
         # + const with r_i = v_i / c^i. So each entry pools with weight c^i;
         # pooling with the original weights alone gave a feasible point that
         # was not the projection.
-        w_weights = w_weights * np.exp(-delta * np.arange(n))
+        # The weights span exp(-delta * n), which underflows for long inputs,
+        # so each block keeps its mean and its log-weight, and merging uses
+        # only the ratio of neighbouring weights. scipy's PAVA cannot take
+        # weights in log form, which is why this pooling is written out here.
+        log_w = np.log(w_weights) - delta * np.arange(n)
 
         start = np.empty(n, dtype=np.int64)
-        wlog_sum = np.empty(n, dtype=np.float64)
-        wsum = np.empty(n, dtype=np.float64)
+        mean = np.empty(n, dtype=np.float64)
+        log_wsum = np.empty(n, dtype=np.float64)
         top = -1
 
         for i in range(n):
             top += 1
             start[top] = i
-            wlog_sum[top] = w_weights[i] * w_shifted[i]
-            wsum[top] = w_weights[i]
+            mean[top] = w_shifted[i]
+            log_wsum[top] = log_w[i]
 
-            while top > 0:
-                left_mean = wlog_sum[top - 1] / wsum[top - 1]
-                right_mean = wlog_sum[top] / wsum[top]
-                if left_mean <= right_mean:
-                    break
-                wlog_sum[top - 1] += wlog_sum[top]
-                wsum[top - 1] += wsum[top]
+            while top > 0 and mean[top - 1] > mean[top]:
+                merged = np.logaddexp(log_wsum[top - 1], log_wsum[top])
+                share = np.exp(log_wsum[top] - merged)
+                mean[top - 1] += share * (mean[top] - mean[top - 1])
+                log_wsum[top - 1] = merged
                 top -= 1
 
         log_z_shifted = np.empty(n, dtype=np.float64)
         for j in range(top + 1):
             s = start[j]
             e = start[j + 1] if j < top else n
-            block_mean = wlog_sum[j] / wsum[j]
-            log_z_shifted[s:e] = block_mean
+            log_z_shifted[s:e] = mean[j]
 
         log_z = log_z_shifted - delta * np.arange(n)
         z = np.exp(log_z)

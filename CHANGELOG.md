@@ -64,9 +64,9 @@ read Removed before upgrading.
   calibrated column with flat runs depended on how the rows happened to be
   sorted. Tied scores now share their average rank, as in the standard
   Mann-Whitney AUC.
-- `informativeness_ratio` warned about an empty mean when no column had a
-  finite ratio (every original column flat while a calibrated one varied);
-  `mean_column_ratio` is now NaN in that case.
+- `informativeness_ratio` warned about an empty mean when every column's
+  ratio was infinite, that is, each original column was flat and its
+  calibrated column was not; `mean_column_ratio` is now NaN in that case.
 - Every docstring example runs and records its output, and the docs build runs
   them again. The quick start's targets did not sum to the number of rows, so
   it could not converge; several examples used targets the input already met.
