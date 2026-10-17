@@ -29,7 +29,7 @@ M = M * N / M.sum()  # now sums to N exactly
 This package now supports **nearly isotonic** constraints that allow small violations of strict monotonicity when appropriate:
 
 - **Epsilon-slack constraints**: Allow z[i+1] ≥ z[i] - ε instead of strict z[i+1] ≥ z[i]
-- **Penalised rank violations**: `calibrate_soft` (squared error) and `calibrate_kl_soft` (KL divergence) charge λ per unit of downward step instead of forbidding it
+- **Penalized rank violations**: `calibrate_soft` (squared error) and `calibrate_kl_soft` (KL divergence) charge λ per unit of downward step instead of forbidding it
 
 These relaxed constraints can provide better balance between rank preservation and probability calibration when strict isotonic constraints are too restrictive.
 
@@ -75,7 +75,7 @@ result = calibrate(P, M, nearly={"mode": "epsilon", "eps": 0.05})
 ```
 
 which permits adjacent within-class decreases of at most `eps` and is handled exactly,
-by lowering the isotonic bound rather than by penalising violations.
+by lowering the isotonic bound rather than by penalizing violations.
 
 ## Installation
 
@@ -124,7 +124,7 @@ from rank_preserving_calibration import calibrate
 # Epsilon-slack: allow small rank violations (recommended above N ~ 6400)
 result = calibrate(P, M, nearly={"mode": "epsilon", "eps": 0.05})
 
-# Penalise rank violations instead of bounding them. This changes the
+# Penalize rank violations instead of bounding them. This changes the
 # objective, not the constraint set, so it lives in its own function.
 from rank_preserving_calibration import calibrate_soft
 
@@ -235,11 +235,11 @@ Calibrate using Dykstra's alternating projections (recommended). Supports both s
 
 ### `calibrate_soft(P, M, lam_m, lam_r)`
 
-Minimise `0.5||Q - P||² + 0.5·lam_m·||Qᵀ1 - M||² + lam_r·Σ(downward steps)` with rows on the simplex, as a quadratic program solved exactly by Clarabel.
+Minimize `0.5||Q - P||² + 0.5·lam_m·||Qᵀ1 - M||² + lam_r·Σ(downward steps)` with rows on the simplex, as a quadratic program solved exactly by Clarabel.
 
 ### `calibrate_kl(P, M, R=None, A=None)` and `calibrate_kl_soft(P, M, lam, R=None, A=None)`
 
-Minimise KL divergence from a reference `R` with ranks taken from an anchor `A`, either strictly or with a λ penalty; both are solved exactly as exponential-cone programs.
+Minimize KL divergence from a reference `R` with ranks taken from an anchor `A`, either strictly or with a λ penalty; both are solved exactly as exponential-cone programs.
 
 ### `create_test_case(case_type, N, J, **kwargs)` (in `tests.data_helpers`)
 
@@ -276,7 +276,7 @@ Generate synthetic test data for various scenarios used in testing.
 
 * **Nearly Isotonic Extensions**:
   - **Epsilon-slack (Dykstra)**: Projects onto the convex set {z : z[i+1] ≥ z[i] - ε} using coordinate transformation. Maintains theoretical convergence guarantees.
-  - **Rank penalty (`calibrate_soft`)**: Minimises 0.5||Q - P||² + λ∑max(0, z[i] - z[i+1]) per column, alongside a marginal penalty, as one quadratic program solved by an interior-point method. Checked against an independent convex solver.
+  - **Rank penalty (`calibrate_soft`)**: Minimizes 0.5||Q - P||² + λ∑max(0, z[i] - z[i+1]) per column, alongside a marginal penalty, as one quadratic program solved by an interior-point method. Checked against an independent convex solver.
 
 ## Examples
 

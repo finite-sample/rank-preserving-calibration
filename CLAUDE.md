@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 1. **Sparse QP** (`calibrate_qp`, the default behind `calibrate`) - exact, interior point
 2. **Dykstra's alternating projections** (`calibrate_dykstra`) - reference implementation the QP is tested against
 3. **KL-divergence calibration** (`calibrate_kl`, `calibrate_kl_soft`) - exponential-cone programs
-4. **Soft calibration** (`calibrate_soft`) - penalised marginals and rank violations, a quadratic program solved by Clarabel
+4. **Soft calibration** (`calibrate_soft`) - penalized marginals and rank violations, a quadratic program solved by Clarabel
 5. **Two-stage IPF** (`calibrate_two_stage`) - IPF followed by isotonic projection
 
 The package projects probability matrices onto the intersection of:
@@ -80,7 +80,7 @@ The package projects probability matrices onto the intersection of:
 - Row projections use numerically stable simplex projection algorithm
 - Column projections use isotonic regression by `scipy.optimize.isotonic_regression` (one shared helper in `_isotonic.py`)
 - KL calibration is an exponential-cone program (Clarabel); `calibrate_kl` is the
-  penalised program at a weight certified large enough to leave no rank violations
+  penalized program at a weight certified large enough to leave no rank violations
 - Cycle detection available for Dykstra's method
 
 ## Development Commands
@@ -232,7 +232,7 @@ result = calibrate_dykstra(P, M, nearly=nearly_params)
 - Uses Euclidean projection onto convex slack constraint set
 - Maintains convergence guarantees of Dykstra's method
 
-### Penalised Violations (`calibrate_soft`)
+### Penalized Violations (`calibrate_soft`)
 ```python
 result = calibrate_soft(P, M, lam_m=100.0, lam_r=1.0)
 ```
@@ -248,7 +248,7 @@ result = calibrate_soft(P, M, lam_m=100.0, lam_r=1.0)
 
 ### Nearly Isotonic Notes
 - Epsilon-slack maintains convexity and theoretical guarantees
-- Penalised violations live in `calibrate_soft`, a different objective, not a `nearly` mode
+- Penalized violations live in `calibrate_soft`, a different objective, not a `nearly` mode
 
 
 ### Common Parameter Patterns

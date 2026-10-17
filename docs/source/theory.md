@@ -72,9 +72,9 @@ $$Q_{i_1,j} \leq Q_{i_2,j} + \epsilon \text{ if } P_{i_1,j} \leq P_{i_2,j}$$
 
 This maintains convexity and uses Euclidean projection onto the relaxed constraint set.
 
-### Penalised Violations
+### Penalized Violations
 
-`calibrate_soft` penalises violations instead of bounding them, and softens the marginals too:
+`calibrate_soft` penalizes violations instead of bounding them, and softens the marginals too:
 
 $$\min_Q \frac{1}{2}\|Q - P\|_F^2 + \frac{\lambda_m}{2}\|Q^T\mathbf{1} - M\|^2 + \lambda_r \sum_j \sum_i \max(0, Q_{(i),j} - Q_{(i+1),j})$$
 
@@ -89,10 +89,10 @@ with each row of $Q$ on the simplex, where $Q_{(i),j}$ is column $j$ in the orde
 
 **Nearly Isotonic:**
 - Epsilon-slack: Maintains theoretical guarantees of Dykstra's method
-- Penalised violations (`calibrate_soft`): one interior-point solve of a quadratic program, checked against an independent convex solver
+- Penalized violations (`calibrate_soft`): one interior-point solve of a quadratic program, checked against an independent convex solver
 
 **KL calibration:**
-- `calibrate_kl_soft` is an exponential-cone program solved by an interior-point method. `calibrate_kl` solves the same program at a penalty weight large enough that the minimiser has no rank violations; because the penalised problem relaxes the constrained one, a violation-free penalised minimiser is the constrained minimiser. Posing the isotonic constraints directly stalls the solver when many are active at once.
+- `calibrate_kl_soft` is an exponential-cone program solved by an interior-point method. `calibrate_kl` solves the same program at a penalty weight large enough that the minimiser has no rank violations; because the penalized problem relaxes the constrained one, a violation-free penalized minimiser is the constrained minimiser. Posing the isotonic constraints directly stalls the solver when many are active at once.
 
 ## Computational Complexity
 

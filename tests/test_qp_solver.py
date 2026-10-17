@@ -151,7 +151,7 @@ class TestQPPreservesRank:
 
 
 class TestEpsilonRelaxation:
-    """Handled exactly, by lowering the isotonic bound rather than penalising."""
+    """Handled exactly, by lowering the isotonic bound rather than penalizing."""
 
     @pytest.mark.parametrize("eps", [0.01, 0.05])
     def test_decreases_stay_within_the_bound(self, eps):

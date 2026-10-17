@@ -107,7 +107,7 @@ def prox_near_isotonic(y: np.ndarray, lam: float) -> np.ndarray:
     m_i(b) = min_a f_i(a) + lam * (a - b)_+, whose derivative is f_i'
     clipped to [-lam, 0] (the fused lasso's symmetric penalty clips to
     [-lam, lam]). f_i' is piecewise linear, so its knots are kept in a deque
-    and each step costs amortised O(1). Going back, z_i is z_{i+1} clipped to
+    and each step costs amortized O(1). Going back, z_i is z_{i+1} clipped to
     the points where f_i' equals -lam and 0.
 
     No maintained Python package solves this problem; the R package neariso

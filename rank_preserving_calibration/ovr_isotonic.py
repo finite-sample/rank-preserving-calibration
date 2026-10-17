@@ -23,23 +23,23 @@ def calibrate_ovr_isotonic(
     """Calibrate multiclass probabilities by one-vs-rest isotonic regression.
 
     Fits a separate isotonic regression per class on the binary problem of that
-    class against the rest, then normalises each row to sum to 1. This is the
+    class against the rest, then normalizes each row to sum to 1. This is the
     conventional approach, used by scikit-learn among others, and is included
     here as the **baseline** the rank-preserving solvers are measured against.
 
     .. warning::
        **This does not preserve rank**, despite living in a package named for
-       it. The final row normalisation divides every entry by a row-specific
+       it. The final row normalization divides every entry by a row-specific
        total, and two people with the same class-`j` score but different row
        totals come out in a different order than they went in. Measured on
-       columns that are *perfectly isotonic before* normalisation, **57% of
+       columns that are *perfectly isotonic before* normalization, **57% of
        adjacent within-class pairs invert**.
 
        If you rank individuals by their probability of a given class, use
        :func:`~rank_preserving_calibration.calibrate_dykstra` instead, which
        projects onto the constraint set rather than rescaling rows.
 
-    The row normalisation is also not free statistically: it partially undoes
+    The row normalization is also not free statistically: it partially undoes
     the per-class calibration it just performed, which is why one-vs-rest
     isotonic ranks last of seven methods on NLL in Dimitriadis-style benchmark
     comparisons of multiclass calibrators.

@@ -35,7 +35,7 @@ class SoftCalibrationResult:
         converged: Whether the solver solved the program and every row of Q is
             a probability distribution to within 1e-7.
         iterations: Interior-point iterations.
-        objective: The minimised objective at Q.
+        objective: The minimized objective at Q.
         fit_term: ||Q - P||^2 at Q.
         marginal_term: ||col_sums(Q) - M||^2 at Q.
         rank_term: Summed downward steps at Q.
@@ -81,7 +81,7 @@ def calibrate_soft(
 
     Solves the convex problem::
 
-        minimise  0.5 ||Q - P||^2 + 0.5 lam_m ||Q^T 1 - M||^2
+        minimize  0.5 ||Q - P||^2 + 0.5 lam_m ||Q^T 1 - M||^2
                   + lam_r * sum_j sum_i (q_(i),j - q_(i+1),j)_+
         subject to each row of Q on the probability simplex,
 

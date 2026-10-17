@@ -55,7 +55,7 @@ For more flexible calibration that allows small violations of isotonic constrain
 nearly_params = {"mode": "epsilon", "eps": 0.05}
 result = calibrate_dykstra(P, M, nearly=nearly_params)
 
-# Penalise rank violations instead of bounding them
+# Penalize rank violations instead of bounding them
 from rank_preserving_calibration import calibrate_soft
 
 result = calibrate_soft(P, M, lam_m=100.0, lam_r=1.0)
