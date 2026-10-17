@@ -22,10 +22,8 @@ from .calibration import (
     CalibrationError,
     _compute_rank_violation,
     _configure_logging,
-    _project_row_simplex,
     _validate_arrays,
 )
-from .nearly import prox_near_isotonic
 
 
 @dataclass(slots=True)
@@ -34,29 +32,28 @@ class SoftCalibrationResult:
 
     Attributes:
         Q: Calibrated probability matrix.
-        converged: Whether the algorithm converged.
-        iterations: Number of iterations performed.
-        objective_values: Objective function values over iterations.
-        fit_term: Final ||Q - P||² term.
-        marginal_term: Final ||col_sums(Q) - M||² term.
-        rank_term: Final rank violation penalty term.
+        converged: Whether the solver solved the program and every row of Q is
+            a probability distribution to within 1e-7.
+        iterations: Interior-point iterations.
+        objective: The minimised objective at Q.
+        fit_term: ||Q - P||^2 at Q.
+        marginal_term: ||col_sums(Q) - M||^2 at Q.
+        rank_term: Summed downward steps at Q.
         max_row_error: Maximum row sum error.
         max_col_error: Maximum column sum error.
         max_rank_violation: Maximum rank violation.
-        final_change: Final relative change between iterations.
     """
 
     Q: np.ndarray
     converged: bool
     iterations: int
-    objective_values: list[float]
+    objective: float
     fit_term: float
     marginal_term: float
     rank_term: float
     max_row_error: float
     max_col_error: float
     max_rank_violation: float
-    final_change: float
 
 
 def _compute_rank_penalty(Q: np.ndarray, column_orders: list[np.ndarray]) -> float:
@@ -77,9 +74,7 @@ def calibrate_soft(
     lam_m: float = 1.0,
     lam_r: float = 10.0,
     *,
-    rho: float = 1.0,
-    max_iters: int = 5000,
-    tol: float = 1e-8,
+    tol: float = 1e-10,
     verbose: bool = False,
 ) -> SoftCalibrationResult:
     """Calibrate with soft penalties on the marginals and on rank violations.
@@ -95,8 +90,11 @@ def calibrate_soft(
     distributions; the marginals and the ranking are traded off against
     staying close to P.
 
-    By ADMM on the split Q = Z (row simplex, exact projection) and Q = Y (rank
-    penalty, exact prox of the nearly-isotonic term per column).
+    It is a quadratic program, solved by Clarabel's interior-point method as
+    calibrate_qp is: variables Q, the marginal gaps s = Q^T 1 - M, and a hinge
+    v >= q_lower - q_upper, v >= 0 per adjacent pair. An ADMM with an exact
+    rank prox reached the same optimum at N = 30 but stalled at its iteration
+    cap from N = 300, 25-90x slower and up to 2e-2 above the optimum.
 
     Args:
         P: Input probability matrix of shape (N, J).
@@ -104,18 +102,15 @@ def calibrate_soft(
         lam_m: Marginal penalty weight. 0 ignores the marginals.
         lam_r: Rank penalty weight. 0 ignores the ranking; large values
             approach strict isotonicity.
-        rho: ADMM penalty parameter.
-        max_iters: Maximum number of iterations.
-        tol: Tolerance on the primal and dual residuals, relative to the
-            iterate's norm.
-        verbose: If True, enables debug logging.
+        tol: Solver gap and feasibility tolerance.
+        verbose: Print the solver log.
 
     Returns:
-        SoftCalibrationResult with the calibrated matrix, taken from the
-        simplex block so that every row is a probability distribution.
+        SoftCalibrationResult with the calibrated matrix.
 
     Raises:
-        CalibrationError: If P or M are malformed, or a weight is negative.
+        CalibrationError: If P or M are malformed, a weight is negative, or the
+            solver fails.
 
     Examples:
         >>> import numpy as np
@@ -128,12 +123,15 @@ def calibrate_soft(
         >>> np.round(result.Q.sum(axis=0), 2).tolist()
         [0.8, 0.8, 0.4]
     """
+    import clarabel
+    import scipy.sparse as sp
+
     _configure_logging(verbose)
 
     N, J = _validate_arrays(P, M)
 
-    if lam_m < 0 or lam_r < 0 or rho <= 0:
-        raise CalibrationError("lam_m and lam_r must be non-negative and rho positive")
+    if lam_m < 0 or lam_r < 0:
+        raise CalibrationError("lam_m and lam_r must be non-negative")
 
     M_sum = float(M.sum())
     if abs(M_sum - N) > 0.1 * N:
@@ -148,101 +146,78 @@ def calibrate_soft(
     M = np.asarray(M, dtype=np.float64)
     column_orders = [np.argsort(P[:, j], kind="mergesort") for j in range(J)]
 
-    Q = P.copy()
-    Z = P.copy()
-    Y = P.copy()
-    u_z = np.zeros_like(P)
-    u_y = np.zeros_like(P)
+    # x = [q (N*J, row-major), s (J), v (J*(N-1))]; Clarabel wants
+    # A x + slack = b with the slack in the listed cones.
+    n, m = N * J, J * (N - 1)
+    n_var = n + J + m
+    k = np.arange(n)
+    h = np.arange(m)
+    lower = np.concatenate([o[:-1] * J + j for j, o in enumerate(column_orders)])
+    upper = np.concatenate([o[1:] * J + j for j, o in enumerate(column_orders)])
+    A = sp.vstack(
+        [
+            # Zero cone: row sums equal 1, and s - Q^T 1 = -M.
+            sp.csr_matrix((np.ones(n), (k // J, k)), shape=(N, n_var)),
+            sp.csr_matrix(
+                (
+                    np.r_[-np.ones(n), np.ones(J)],
+                    (np.r_[k % J, np.arange(J)], np.r_[k, n + np.arange(J)]),
+                ),
+                shape=(J, n_var),
+            ),
+            # Non-negative cone: q_lower - q_upper - v <= 0, -v <= 0, -q <= 0.
+            sp.csr_matrix(
+                (
+                    np.r_[np.ones(m), -np.ones(m), -np.ones(m)],
+                    (np.r_[h, h, h], np.r_[lower, upper, n + J + h]),
+                ),
+                shape=(m, n_var),
+            ),
+            sp.csr_matrix((-np.ones(m), (h, n + J + h)), shape=(m, n_var)),
+            sp.csr_matrix((-np.ones(n), (k, k)), shape=(n, n_var)),
+        ],
+        format="csc",
+    )
+    b = np.r_[np.ones(N), -M, np.zeros(2 * m + n)]
+    quad = sp.diags(np.r_[np.ones(n), np.full(J, float(lam_m)), np.zeros(m)]).tocsc()
+    linear = np.r_[-P.reshape(-1), np.zeros(J), np.full(m, float(lam_r))]
+    cones = [
+        clarabel.ZeroConeT(N + J),  # type: ignore[attr-defined]
+        clarabel.NonnegativeConeT(2 * m + n),  # type: ignore[attr-defined]
+    ]
 
-    objective_values: list[float] = []
-    converged = False
-    final_change = float("inf")
-    iteration = 0
+    settings = clarabel.DefaultSettings()  # type: ignore[attr-defined]
+    settings.verbose = bool(verbose)
+    settings.tol_gap_abs = tol
+    settings.tol_gap_rel = tol
+    settings.tol_feas = tol
+    # AlmostSolved means these looser tolerances were met instead.
+    settings.reduced_tol_gap_abs = 100 * tol
+    settings.reduced_tol_gap_rel = 100 * tol
+    settings.reduced_tol_feas = 100 * tol
+    solution = clarabel.DefaultSolver(  # type: ignore[attr-defined]
+        quad, linear, A, b, cones, settings
+    ).solve()
+    status = str(solution.status)
+    if status not in ("Solved", "AlmostSolved"):
+        raise CalibrationError(f"Soft calibration solver returned status {status!r}.")
 
-    for iteration in range(1, max_iters + 1):  # noqa: B007  # reported count
-        Q_prev = Q
-
-        # Q-update. Setting the gradient to zero column by column, with B the
-        # unpenalised right-hand side and c = sum(Q_j):
-        #   (1 + 2 rho) Q_j + lam_m (c - M_j) 1 = B_j
-        # Summing over rows gives c, then Q_j follows.
-        B = P + rho * (Z - u_z) + rho * (Y - u_y)
-        c = (B.sum(axis=0) + lam_m * N * M) / (1 + 2 * rho + lam_m * N)
-        Q = (B + lam_m * (M - c)) / (1 + 2 * rho)
-
-        Z_prev, Y_prev = Z, Y
-        Z = _project_row_simplex(Q + u_z)
-        V = Q + u_y
-        Y = V.copy()
-        if lam_r > 0:
-            for j, idx in enumerate(column_orders):
-                Y[idx, j] = prox_near_isotonic(
-                    V[idx, j], lam_r / rho, abstol=1e-12, reltol=1e-10, max_iters=20000
-                )
-
-        u_z = u_z + Q - Z
-        u_y = u_y + Q - Y
-
-        objective_values.append(_objective(Z, P, M, lam_m, lam_r, column_orders))
-
-        scale = 1.0 + float(np.linalg.norm(Q))
-        primal = max(float(np.linalg.norm(Q - Z)), float(np.linalg.norm(Q - Y)))
-        dual = rho * (
-            float(np.linalg.norm(Z - Z_prev)) + float(np.linalg.norm(Y - Y_prev))
-        )
-        final_change = float(np.linalg.norm(Q - Q_prev)) / scale
-        if primal <= tol * scale and dual <= tol * scale:
-            converged = True
-            break
-
-    if not converged:
-        warnings.warn(
-            f"Soft calibration did not converge in {iteration} iterations; "
-            f"final relative change {final_change:.2e}.",
-            UserWarning,
-            stacklevel=2,
-        )
-
-    Q = Z
+    # Interior-point output can sit 1e-12 below zero; clipping keeps the rows.
+    Q = np.maximum(np.asarray(solution.x[:n], dtype=float), 0.0).reshape(N, J)
     col_sums = Q.sum(axis=0)
+    fit_term = float(np.sum((Q - P) ** 2))
+    marginal_term = float(np.sum((col_sums - M) ** 2))
+    rank_term = _compute_rank_penalty(Q, column_orders)
+    max_row_error = float(np.max(np.abs(Q.sum(axis=1) - 1.0)))
     return SoftCalibrationResult(
         Q=Q,
-        converged=converged,
-        iterations=iteration,
-        objective_values=objective_values,
-        fit_term=float(np.sum((Q - P) ** 2)),
-        marginal_term=float(np.sum((col_sums - M) ** 2)),
-        rank_term=_compute_rank_penalty(Q, column_orders),
-        max_row_error=float(np.max(np.abs(Q.sum(axis=1) - 1.0))),
+        converged=max_row_error <= 1e-7,
+        iterations=int(getattr(solution, "iterations", 0) or 0),
+        objective=0.5 * fit_term + 0.5 * lam_m * marginal_term + lam_r * rank_term,
+        fit_term=fit_term,
+        marginal_term=marginal_term,
+        rank_term=rank_term,
+        max_row_error=max_row_error,
         max_col_error=float(np.max(np.abs(col_sums - M))),
         max_rank_violation=_compute_rank_violation(Q, P),
-        final_change=final_change,
-    )
-
-
-def _objective(
-    Q: np.ndarray,
-    P: np.ndarray,
-    M: np.ndarray,
-    lam_m: float,
-    lam_r: float,
-    column_orders: list[np.ndarray],
-) -> float:
-    """Evaluate the objective calibrate_soft minimises.
-
-    Args:
-        Q: Candidate matrix.
-        P: Input probability matrix.
-        M: Target column sums.
-        lam_m: Marginal penalty weight.
-        lam_r: Rank penalty weight.
-        column_orders: Per-column orderings of P.
-
-    Returns:
-        The objective value at Q.
-    """
-    return float(
-        0.5 * np.sum((Q - P) ** 2)
-        + 0.5 * lam_m * np.sum((Q.sum(axis=0) - M) ** 2)
-        + lam_r * _compute_rank_penalty(Q, column_orders)
     )

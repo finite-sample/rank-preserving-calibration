@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "Rank Preserving Calibration"
-abstract: "Rank-preserving calibration of multiclass probabilities via Dykstra's projections and ADMM."
+abstract: "Rank-preserving calibration of multiclass probabilities: exact QP, Dykstra's projections, KL and soft-penalty variants."
 authors:
   - family-names: "Sood"
     given-names: "Gaurav"
@@ -17,6 +17,6 @@ keywords:
   - "multiclass"
   - "isotonic"
   - "dykstra"
-  - "admm"
+  - "quadratic programming"
   - "probability calibration"
   - "rank preservation"

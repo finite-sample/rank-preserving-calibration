@@ -155,7 +155,9 @@ class TestNearlyIsotonicEdgeCases:
         assert np.isfinite(z_moderate).all()
 
         # Tiny epsilon should be closer to strict isotonic
-        from rank_preserving_calibration.nearly import _pav_increasing
+        from rank_preserving_calibration._isotonic import (
+            _isotonic_regression as _pav_increasing,
+        )
 
         z_isotonic = _pav_increasing(v)
 

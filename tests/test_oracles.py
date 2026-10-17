@@ -2,18 +2,17 @@
 
 The row-simplex projection and the column isotonic step are what every solver
 in the package is assembled from, so each is pinned against an independent
-solver: cvxpy for the convex programs, scipy's PAVA for isotonic regression.
+solver: cvxpy for the convex programs. Isotonic regression is scipy's PAVA
+inside the package, so it too is checked against cvxpy, not against scipy.
 """
 
 import numpy as np
 import pytest
-from scipy.optimize import isotonic_regression
 
-from rank_preserving_calibration import calibrate_dykstra
-from rank_preserving_calibration.calibration import (
-    _isotonic_regression,
-    _project_row_simplex,
-)
+from rank_preserving_calibration import calibrate_dykstra, prox_near_isotonic
+from rank_preserving_calibration._isotonic import _isotonic_regression
+from rank_preserving_calibration.calibration import _project_row_simplex
+from rank_preserving_calibration.kl_nearly import _kl_pav_increasing
 
 cp = pytest.importorskip("cvxpy")
 
@@ -49,44 +48,70 @@ class TestRowSimplexProjection:
         np.testing.assert_allclose(_project_row_simplex(P), P, atol=1e-15)
 
 
+def _isotonic_oracle(y, w, kl=False):
+    z = cp.Variable(y.size)
+    loss = (
+        cp.sum(cp.multiply(w, cp.kl_div(z, y)))
+        if kl
+        else cp.sum(cp.multiply(w, cp.square(z - y)))
+    )
+    cp.Problem(cp.Minimize(loss), [z[1:] >= z[:-1]]).solve(
+        solver=cp.CLARABEL, tol_gap_abs=1e-12, tol_gap_rel=1e-12, tol_feas=1e-12
+    )
+    return z.value
+
+
 class TestIsotonicRegression:
     @pytest.mark.parametrize("seed", range(5))
-    @pytest.mark.parametrize("ties", ["stable", "group"])
-    def test_unweighted_matches_scipy(self, seed, ties):
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_matches_qp(self, seed, weighted):
         rng = np.random.default_rng(seed)
-        # Rounding creates runs of exactly equal values for ties="group" to pool.
+        # Rounding creates runs of exactly equal values.
         y = np.round(rng.normal(size=60), 1)
+        w = rng.uniform(0.1, 3.0, y.size) if weighted else np.ones(y.size)
+        ours = _isotonic_regression(y, w if weighted else None)
+        np.testing.assert_allclose(ours, _isotonic_oracle(y, w), atol=1e-6)
+
+    @pytest.mark.parametrize("seed", range(3))
+    def test_kl_fit_matches_the_kl_program(self, seed):
+        # Geometric-mean pooling minimises the generalised KL divergence
+        # sum w (z log(z / y) - z + y), which is cvxpy's kl_div; dropping the
+        # -z + y terms would move the optimum by a factor of e.
+        rng = np.random.default_rng(seed)
+        y = rng.uniform(0.05, 1.0, 25)
+        w = rng.uniform(0.5, 3.0, y.size)
         np.testing.assert_allclose(
-            _isotonic_regression(y, ties=ties), isotonic_regression(y).x, atol=1e-12
+            _kl_pav_increasing(y, w), _isotonic_oracle(y, w, kl=True), atol=1e-5
         )
 
     @pytest.mark.parametrize(
-        "weights",
-        [
-            np.array([1, 3, 2, 1, 5, 1, 2, 4]),  # integer path
-            np.array([0.5, 1.5, 2.25, 1.0, 0.1, 3.0, 0.7, 1.2]),  # float path
-        ],
+        ("weights", "message"),
+        [(np.ones(3), "same shape"), (np.array([1.0, 0.0, 1.0, 1.0]), "positive")],
     )
-    @pytest.mark.parametrize("ties", ["stable", "group"])
-    def test_weighted_matches_scipy(self, weights, ties):
-        y = np.array([3.0, 1.0, 1.0, 2.0, 0.5, 0.5, 4.0, 3.5])
-        expected = isotonic_regression(y, weights=weights).x
-        np.testing.assert_allclose(
-            _isotonic_regression(y, ties=ties, weights=weights), expected, atol=1e-12
-        )
-
-    @pytest.mark.parametrize(
-        ("kwargs", "message"),
-        [
-            ({"rtol": -1.0}, "rtol"),
-            ({"ties": "average"}, "ties"),
-            ({"weights": np.ones(3)}, "same shape"),
-            ({"weights": np.array([1.0, 0.0, 1.0, 1.0])}, "positive"),
-        ],
-    )
-    def test_rejects_bad_arguments(self, kwargs, message):
+    def test_rejects_bad_weights(self, weights, message):
         with pytest.raises(ValueError, match=message):
-            _isotonic_regression(np.array([2.0, 1.0, 3.0, 0.0]), **kwargs)
+            _isotonic_regression(np.array([2.0, 1.0, 3.0, 0.0]), weights)
+
+
+class TestNearlyIsotonicProx:
+    """The dynamic-programming prox against the convex problem it solves."""
+
+    @pytest.mark.parametrize("n", [2, 3, 10, 60])
+    @pytest.mark.parametrize("lam", [1e-3, 0.05, 0.3, 1.0, 5.0])
+    def test_matches_qp(self, n, lam):
+        y = np.random.default_rng(n).normal(size=n) * 2
+        z = cp.Variable(n)
+        objective = 0.5 * cp.sum_squares(z - y) + lam * cp.sum(cp.pos(z[:-1] - z[1:]))
+        cp.Problem(cp.Minimize(objective)).solve(
+            solver=cp.CLARABEL, tol_gap_abs=1e-12, tol_gap_rel=1e-12, tol_feas=1e-12
+        )
+        np.testing.assert_allclose(prox_near_isotonic(y, lam), z.value, atol=1e-7)
+
+    def test_large_penalty_is_isotonic_regression(self):
+        y = np.random.default_rng(0).normal(size=200)
+        np.testing.assert_allclose(
+            prox_near_isotonic(y, 1e6), _isotonic_oracle(y, np.ones(y.size)), atol=1e-6
+        )
 
 
 class TestGroupedTies:

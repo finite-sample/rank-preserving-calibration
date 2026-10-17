@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `calibrate_soft` is one quadratic program solved by Clarabel, as
+  `calibrate_qp` is, instead of an ADMM. At N = 300 and 1000 the ADMM stopped at
+  its iteration cap up to 2e-2 above the optimum; the QP solves every case
+  tested, matches an independent solver, and is 25-90x faster (0.29 s against
+  11.9 s at N = 1000). `tol` is now the solver tolerance (default 1e-10), and
+  the result reports `objective` in place of `objective_values` and
+  `final_change`.
+- `prox_near_isotonic` is exact: dynamic programming along the chain in
+  O(n), as Johnson's (2013) fused-lasso algorithm with the clip interval
+  [-lam, 0]. It replaces an inner ADMM, is 16x faster at n = 1000, and
+  matches an independent solver.
+- Isotonic regression everywhere is `scipy.optimize.isotonic_regression`, in
+  place of three pure-Python copies, one of which had mishandled weights in
+  0.9. Dykstra is 32x faster (100 iterations at N = 2000: 0.05 s against
+  1.60 s) with outputs unchanged to 1e-15. `scipy>=1.12` is now required.
+- The package description and keywords no longer mention ADMM.
+
+### Removed
+- `calibrate_soft`'s `rho` and `max_iters`, which no longer apply.
+- `calibrate_dykstra(rtol=...)`, a merge tolerance in the old pure-Python PAV
+  that scipy's has no equivalent for; its default, 0, is what every path used.
+- `prox_near_isotonic`'s ADMM settings (`rho`, `max_iters`, `abstol`,
+  `reltol`, `return_info`), and `return_info` on
+  `prox_near_isotonic_with_sum`.
+
 ## [0.10.0] - 2026-10-16
 
 Every solver is now tested against one that shares no code with it (cvxpy,

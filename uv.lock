@@ -1662,7 +1662,7 @@ test = [
 requires-dist = [
     { name = "clarabel", specifier = ">=0.9" },
     { name = "numpy", specifier = ">=1.20" },
-    { name = "scipy", specifier = ">=1.10" },
+    { name = "scipy", specifier = ">=1.12" },
 ]
 
 [package.metadata.requires-dev]

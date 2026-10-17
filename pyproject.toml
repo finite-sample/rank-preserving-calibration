@@ -5,7 +5,7 @@ build-backend = "uv_build"
 [project]
 name = "rank_preserving_calibration"
 version = "0.10.0"
-description = "Rank-preserving calibration of multiclass probabilities via Dykstra's projections and ADMM."
+description = "Rank-preserving calibration of multiclass probabilities: exact QP, Dykstra's projections, KL and soft-penalty variants."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -13,7 +13,7 @@ requires-python = ">=3.12"
 authors = [
   { name = "Gaurav Sood", email = "contact@gsood.com" },
 ]
-keywords = ["calibration", "machine learning", "multiclass", "isotonic", "dykstra", "admm"]
+keywords = ["calibration", "machine learning", "multiclass", "isotonic", "dykstra", "quadratic programming"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Science/Research",
@@ -25,7 +25,8 @@ classifiers = [
 ]
 dependencies = [
   "numpy>=1.20",
-  "scipy>=1.10",
+  # scipy.optimize.isotonic_regression arrived in 1.12.
+  "scipy>=1.12",
   "clarabel>=0.9",
 ]
 
@@ -98,9 +99,9 @@ ignore = [
     # code unreadable against the derivations it implements.
     "N803", "N806",
 ]
-# Greek letters that carry their mathematical meaning here: rho is the ADMM
-# penalty parameter, lambda the soft-constraint weight.
-allowed-confusables = ["ρ", "λ"]
+# Greek letters that carry their mathematical meaning here: lambda is the
+# soft-constraint weight.
+allowed-confusables = ["λ"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

@@ -29,7 +29,6 @@ class TestCalibratesoft:
         assert isinstance(result, SoftCalibrationResult)
         assert result.Q.shape == P.shape
         assert result.iterations > 0
-        assert len(result.objective_values) > 0
         # Rows should sum to 1 (hard constraint)
         assert np.allclose(result.Q.sum(axis=1), 1.0, atol=1e-6)
         # All values non-negative
@@ -40,7 +39,7 @@ class TestCalibratesoft:
         P = np.array([[0.6, 0.3, 0.1], [0.3, 0.5, 0.2], [0.2, 0.4, 0.4]])
         M = np.array([1.1, 1.2, 0.7])
 
-        result = calibrate_soft(P, M, lam_m=1.0, lam_r=1.0, max_iters=500)
+        result = calibrate_soft(P, M, lam_m=1.0, lam_r=1.0)
 
         # Marginal term should be computed
         assert result.marginal_term >= 0
@@ -51,7 +50,7 @@ class TestCalibratesoft:
         """Test that rank penalty term is computed correctly."""
         P, M = create_test_case("linear", N=15, J=3, seed=123)
 
-        result = calibrate_soft(P, M, lam_m=1.0, lam_r=10.0, max_iters=500)
+        result = calibrate_soft(P, M, lam_m=1.0, lam_r=10.0)
 
         # Rank term should be non-negative
         assert result.rank_term >= 0
@@ -64,7 +63,7 @@ class TestCalibratesoft:
         M = np.array([1.0, 1.0])
 
         # Zero marginal penalty - should stay closer to P
-        result = calibrate_soft(P, M, lam_m=0.0, lam_r=0.0, max_iters=100)
+        result = calibrate_soft(P, M, lam_m=0.0, lam_r=0.0)
         assert result.Q.shape == P.shape
         assert np.allclose(result.Q.sum(axis=1), 1.0, atol=1e-6)
 
@@ -73,41 +72,26 @@ class TestCalibratesoft:
         P = np.array([[0.6, 0.4], [0.3, 0.7], [0.5, 0.5]])
         M = np.array([1.4, 1.6])
 
-        result = calibrate_soft(P, M, lam_m=1.0, lam_r=10.0, max_iters=500, tol=1e-7)
+        result = calibrate_soft(P, M, lam_m=1.0, lam_r=10.0)
 
         # Algorithm should run and produce valid output
         assert result.iterations > 0
         assert np.allclose(result.Q.sum(axis=1), 1.0, atol=1e-6)
 
-    def test_objective_decreasing(self):
-        """Test that objective function generally decreases."""
-        P, M = create_test_case("random", N=15, J=4, seed=789)
 
-        result = calibrate_soft(P, M, lam_m=1.0, lam_r=5.0, max_iters=500)
-
-        # Check that objective doesn't increase significantly
-        # (may have small increases due to projection steps)
-        obj_vals = result.objective_values
-        if len(obj_vals) > 10:
-            # First half average should be >= second half average
-            mid = len(obj_vals) // 2
-            first_half_mean = np.mean(obj_vals[:mid])
-            second_half_mean = np.mean(obj_vals[mid:])
-            assert second_half_mean <= first_half_mean * 1.1
-
-
-class TestADMMParameter:
-    def test_rho_changes_the_path_not_the_answer(self):
-        """rho only conditions the splitting; the optimum is the same."""
+class TestSolverTolerance:
+    def test_tighter_tolerance_moves_the_answer_by_little(self):
+        """The optimum is unique, so tolerances only change precision."""
         P, M = create_test_case("random", N=12, J=3, seed=4)
-        Q1 = calibrate_soft(P, M, lam_m=1.0, lam_r=0.5, rho=0.5).Q
-        Q2 = calibrate_soft(P, M, lam_m=1.0, lam_r=0.5, rho=2.0).Q
-        np.testing.assert_allclose(Q1, Q2, atol=1e-6)
+        Q1 = calibrate_soft(P, M, lam_m=1.0, lam_r=0.5, tol=1e-8).Q
+        Q2 = calibrate_soft(P, M, lam_m=1.0, lam_r=0.5, tol=1e-11).Q
+        np.testing.assert_allclose(Q1, Q2, atol=1e-4)
 
 
 def test_solver_options_are_keyword_only():
-    # rho was inserted before max_iters; positionally, (..., 1000, 1e-6) would
-    # have become rho=1000, max_iters=1e-6. Now it fails loudly instead.
+    # Solver options are keyword-only, so a positional call from an older
+    # signature, such as (P, M, 1.0, 10.0, 1000, 1e-6), fails loudly instead of
+    # being misread.
     P = np.array([[0.6, 0.4], [0.3, 0.7]])
     M = np.array([0.9, 1.1])
     with pytest.raises(TypeError):
@@ -156,38 +140,16 @@ class TestSoftCalibrationValidation:
 
 
 class TestSoftCalibrationResult:
-    """Test SoftCalibrationResult dataclass."""
-
-    def test_result_fields(self):
-        """Test that all expected fields are present."""
+    def test_objective_is_its_terms_recombined(self):
         P, M = create_test_case("random", N=10, J=3, seed=42)
-        result = calibrate_soft(P, M)
-
-        # Check all fields exist
-        assert hasattr(result, "Q")
-        assert hasattr(result, "converged")
-        assert hasattr(result, "iterations")
-        assert hasattr(result, "objective_values")
-        assert hasattr(result, "fit_term")
-        assert hasattr(result, "marginal_term")
-        assert hasattr(result, "rank_term")
-        assert hasattr(result, "max_row_error")
-        assert hasattr(result, "max_col_error")
-        assert hasattr(result, "max_rank_violation")
-        assert hasattr(result, "final_change")
-
-    def test_result_types(self):
-        """Test that result fields have correct types."""
-        P, M = create_test_case("random", N=10, J=3, seed=42)
-        result = calibrate_soft(P, M)
-
-        assert isinstance(result.Q, np.ndarray)
-        assert isinstance(result.converged, bool)
-        assert isinstance(result.iterations, int)
-        assert isinstance(result.objective_values, list)
-        assert isinstance(result.fit_term, float)
-        assert isinstance(result.marginal_term, float)
-        assert isinstance(result.rank_term, float)
+        r = calibrate_soft(P, M, lam_m=2.0, lam_r=0.5)
+        assert r.objective == pytest.approx(
+            0.5 * r.fit_term + 0.5 * 2.0 * r.marginal_term + 0.5 * r.rank_term
+        )
+        assert r.fit_term == pytest.approx(float(np.sum((r.Q - P) ** 2)))
+        assert r.marginal_term == pytest.approx(
+            float(np.sum((r.Q.sum(axis=0) - M) ** 2))
+        )
 
 
 if __name__ == "__main__":

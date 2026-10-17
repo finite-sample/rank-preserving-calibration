@@ -12,7 +12,8 @@ from typing import Any
 
 import numpy as np
 
-from .calibration import CalibrationError, _isotonic_regression
+from ._isotonic import _isotonic_regression
+from .calibration import CalibrationError
 
 
 def calibrate_ovr_isotonic(
@@ -95,7 +96,7 @@ def calibrate_ovr_isotonic(
         pooled = np.bincount(inverse, weights=y_binary, minlength=unique_p.size)
         pooled /= counts
 
-        fitted = _isotonic_regression(pooled, ties="stable", weights=counts)
+        fitted = _isotonic_regression(pooled, weights=counts)
 
         calibrated_probs[:, j] = np.interp(p_j, unique_p, fitted)
 

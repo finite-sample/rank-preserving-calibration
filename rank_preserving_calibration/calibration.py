@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 
+from ._isotonic import _isotonic_regression
 from .nearly import project_near_isotonic_euclidean
 
 type NDArrayFloat = np.ndarray[Any, np.dtype[np.floating[Any]]]
@@ -269,89 +270,6 @@ def _project_row_simplex(rows: np.ndarray, eps: float = 1e-15) -> np.ndarray:
     return projected
 
 
-# ---------- Isotonic (PAV) -------------------------------------------
-
-
-def _isotonic_regression(
-    y: np.ndarray,
-    rtol: float = 0.0,
-    ties: str = "stable",
-    weights: np.ndarray | None = None,
-) -> np.ndarray:
-    """Isotonic regression (nondecreasing) via stack-based PAV in O(n).
-
-    Strict by default (rtol=0.0) to avoid micro-violations in tests.
-    """
-
-    def _tol(a: float, b: float) -> float:
-        return rtol * (abs(a) + abs(b) + 1.0)
-
-    y = np.asarray(y, dtype=np.float64)
-    n = y.size
-    if n <= 1:
-        return y.copy()
-    if rtol < 0:
-        raise ValueError("rtol must be nonnegative.")
-    if ties not in ("stable", "group"):
-        raise ValueError("ties must be 'stable' or 'group'.")
-
-    if weights is None:
-        w_init = np.ones(n, dtype=np.float64)
-    else:
-        w_init = np.asarray(weights, dtype=np.float64)
-        if w_init.shape != y.shape:
-            raise ValueError("weights must have the same shape as y")
-        if np.any(w_init <= 0):
-            raise ValueError("weights must be positive")
-
-    # Weights and element counts are kept apart: a block's weight sets its
-    # pooled mean, its count says how many output positions it fills.
-    # Expanding by weight wrote past the end of the output whenever a
-    # weight exceeded 1, which is how the grouped-ties path used it.
-    if ties == "group":
-        # Pre-pool contiguous exact equals in y.
-        run_starts = np.flatnonzero(np.r_[True, y[1:] != y[:-1]])
-        a = y[run_starts]
-        w0 = np.add.reduceat(w_init, run_starts)
-        c0 = np.diff(np.r_[run_starts, n])
-    else:
-        a = y
-        w0 = w_init
-        c0 = np.ones(n, dtype=np.int64)
-
-    m = a.size
-    # Block stacks
-    start = np.empty(m, dtype=np.int64)  # start index in the output
-    mean = np.empty(m, dtype=np.float64)  # block mean
-    wsum = np.empty(m, dtype=np.float64)  # block weight
-    top = -1
-    idx = 0  # running start position
-
-    for i in range(m):
-        # push new block
-        top += 1
-        start[top] = idx
-        mean[top] = a[i]
-        wsum[top] = w0[i]
-        idx += int(c0[i])
-
-        # merge backward while violated beyond tolerance
-        while top > 0 and mean[top - 1] > mean[top] + _tol(mean[top - 1], mean[top]):
-            w1 = wsum[top - 1]
-            w2 = wsum[top]
-            mean[top - 1] = (w1 * mean[top - 1] + w2 * mean[top]) / (w1 + w2)
-            wsum[top - 1] = w1 + w2
-            top -= 1
-
-    # expand pooled block means back to full length
-    out = np.empty(n, dtype=np.float64)
-    for j in range(top + 1):
-        s = start[j]
-        e = start[j + 1] if j < top else n
-        out[s:e] = mean[j]
-    return out
-
-
 # ---------- Column projection (exact) --------------------------------
 
 
@@ -377,7 +295,6 @@ def _project_column_isotonic_sum(
     column_order: np.ndarray,
     target_sum: float,
     *,
-    rtol: float = 0.0,
     nearly: dict | None = None,
     ties: str = "stable",
     score_sorted: np.ndarray | None = None,
@@ -408,15 +325,13 @@ def _project_column_isotonic_sum(
                     L = int(lens[g])
                     y_group[g] = float(np.mean(y[pos : pos + L]))
                     pos += L
-                z_group = _isotonic_regression(
-                    y_group, rtol=rtol, ties="stable", weights=lens.astype(np.float64)
-                )
+                z_group = _isotonic_regression(y_group, weights=lens.astype(np.float64))
                 total_n = int(lens.sum())
                 c = (float(target_sum) - float(np.dot(z_group, lens))) / float(total_n)
                 z_group_shift = z_group + c
                 iso_shifted = np.repeat(z_group_shift, lens)
             else:
-                iso = _isotonic_regression(y, rtol=rtol, ties=ties)
+                iso = _isotonic_regression(y)
                 c = (float(target_sum) - float(iso.sum())) / float(iso.size)
                 iso_shifted = iso + c
 
@@ -512,7 +427,6 @@ def _polish_to_intersection(
     M: np.ndarray,
     column_orders: ColumnOrders,
     *,
-    rtol: float = 0.0,
     ties: str = "stable",
     score_sorted: list[np.ndarray | None] | None = None,
     max_iters: int = 200,
@@ -531,7 +445,6 @@ def _polish_to_intersection(
                 Q[:, j],
                 column_orders[j],
                 float(M[j]),
-                rtol=rtol,
                 ties=ties,
                 score_sorted=score_sorted[j] if score_sorted else None,
             )
@@ -550,7 +463,6 @@ def calibrate_dykstra(
     M: np.ndarray,
     max_iters: int = 3000,
     tol: float = 1e-7,
-    rtol: float = 0.0,  # strict isotone by default
     feasibility_tol: float = 0.1,
     verbose: bool = False,
     callback: CallbackFunction = None,
@@ -579,7 +491,6 @@ def calibrate_dykstra(
             feasibility.
         max_iters: Maximum number of iterations. Default 3000 is usually sufficient.
         tol: Convergence tolerance for relative change in solution. Default 1e-7.
-        rtol: Relative tolerance for isotonic violations in PAV. Default 0.0 (strict).
         feasibility_tol: Tolerance for feasibility warnings when sum(M) differs from N.
         verbose: If True, enables debug logging.
         callback: Optional function called each iteration as callback(iter, change, Q).
@@ -685,7 +596,6 @@ def calibrate_dykstra(
                 Y[:, j],
                 column_orders[j],
                 float(M[j]),
-                rtol=rtol,
                 nearly=nearly,
                 ties=ties,
                 score_sorted=score_sorted[j],
@@ -731,7 +641,6 @@ def calibrate_dykstra(
             Q,
             M,
             column_orders,
-            rtol=rtol,
             ties=ties,
             score_sorted=score_sorted,
             max_iters=100,

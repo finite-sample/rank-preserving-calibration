@@ -18,10 +18,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ._isotonic import _isotonic_regression
 from .calibration import (
     _compute_rank_violation,
     _configure_logging,
-    _isotonic_regression,
     _project_row_simplex,
     _validate_arrays,
     _validate_inputs,
@@ -244,7 +244,7 @@ def calibrate_two_stage(
         for j in range(J):
             idx = column_orders[j]
             v_sorted = Q[idx, j]
-            iso = _isotonic_regression(v_sorted, rtol=0.0, ties="stable")
+            iso = _isotonic_regression(v_sorted)
             Q[idx, j] = iso
 
         # Project onto row simplex
