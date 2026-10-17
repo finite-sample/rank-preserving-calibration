@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-17
+
+The package's last hand-rolled solvers are replaced: isotonic regression by
+scipy's, the nearly-isotonic prox by an exact O(n) algorithm, and
+`calibrate_soft`'s ADMM by a quadratic program. Answers are unchanged or more
+accurate, and every affected path is faster. Read Removed before upgrading.
+
 ### Changed
 - `calibrate_soft` is one quadratic program solved by Clarabel, as
   `calibrate_qp` is, instead of an ADMM. At N = 300 and 1000 the ADMM stopped at

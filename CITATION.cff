@@ -6,8 +6,8 @@ abstract: "Rank-preserving calibration of multiclass probabilities: exact QP, Dy
 authors:
   - family-names: "Sood"
     given-names: "Gaurav"
-version: "0.10.0"
-date-released: "2026-10-16"
+version: "0.11.0"
+date-released: "2026-10-17"
 license: MIT
 repository-code: "https://github.com/finite-sample/rank-preserving-calibration"
 url: "https://finite-sample.github.io/rank-preserving-calibration/"

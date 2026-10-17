@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `rank_preserving_calibration` is a Python package for rank-preserving calibration of multiclass probabilities. It implements several algorithms:
 
 1. **Sparse QP** (`calibrate_qp`, the default behind `calibrate`) - exact, interior point
-2. **Dykstra's alternating projections** (`calibrate_dykstra`) - numpy-only reference implementation
+2. **Dykstra's alternating projections** (`calibrate_dykstra`) - reference implementation the QP is tested against
 3. **KL-divergence calibration** (`calibrate_kl`, `calibrate_kl_soft`) - exponential-cone programs
 4. **Soft calibration** (`calibrate_soft`) - penalised marginals and rank violations, a quadratic program solved by Clarabel
 5. **Two-stage IPF** (`calibrate_two_stage`) - IPF followed by isotonic projection
