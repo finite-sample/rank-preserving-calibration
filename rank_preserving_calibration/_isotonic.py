@@ -20,7 +20,7 @@ def _isotonic_regression(
         weights: Positive weights of shape (n,). If None, all ones.
 
     Returns:
-        The fit z minimising sum_i w_i (z_i - y_i)^2 subject to z
+        The fit z minimizing sum_i w_i (z_i - y_i)^2 subject to z
         nondecreasing.
 
     Raises:

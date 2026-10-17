@@ -148,7 +148,7 @@ def calibrate_ipf(
         # Test the matrix that is returned: the row-normalised iterate. A
         # small change alone would accept the fixed point IPF settles on when
         # sum(M) != N, and a small per-row gap still lets the column error
-        # after normalisation build up across N rows.
+        # after normalization build up across N rows.
         Q_out = Q / np.maximum(Q.sum(axis=1, keepdims=True), 1e-15)
         col_gap = float(np.max(np.abs(Q_out.sum(axis=0) - M)))
         if final_change < tol and col_gap < tol:

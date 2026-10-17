@@ -164,7 +164,7 @@ def _epsilon_from(nearly: dict | None) -> float:
     if mode != "epsilon":
         raise CalibrationError(
             f"nearly supports only {{'mode': 'epsilon', 'eps': ...}}; got mode="
-            f"{mode!r}. To penalise rank violations instead of bounding them, "
+            f"{mode!r}. To penalize rank violations instead of bounding them, "
             "use calibrate_soft."
         )
     eps = float(nearly.get("eps", 1e-3))

@@ -114,7 +114,7 @@ class TestToleranceChecksAreAbsolute:
 
 
 # --------------------------------------------------------------------------- #
-# Defect 3: the documented behaviour on infeasible input
+# Defect 3: the documented behavior on infeasible input
 # --------------------------------------------------------------------------- #
 
 
@@ -154,7 +154,7 @@ class TestInfeasibleInputIsHandledAsDocumented:
 
 
 class TestOvRIsotonicIsHonestAboutRank:
-    """Row normalisation divides each entry by a row-specific number.
+    """Row normalization divides each entry by a row-specific number.
 
     On columns that are perfectly isotonic beforehand, that inverted 57% of
     adjacent within-class pairs in the audit. The function is a useful baseline
@@ -212,7 +212,7 @@ class TestAgainstIndependentSolver:
 
     @pytest.mark.parametrize(("N", "J"), [(10, 3), (20, 4), (30, 3)])
     def test_dykstra_reaches_the_true_optimum(self, N, J):
-        """The returned matrix must minimise ||Q - P||_F over the constraint set."""
+        """The returned matrix must minimize ||Q - P||_F over the constraint set."""
         cp = pytest.importorskip("cvxpy")
         P, M = feasible_problem(11, N=N, J=J)
 

@@ -59,7 +59,7 @@ class TestPAVVariants:
             _pav_increasing(Y, w)
 
     def test_kl_pav_is_geometric_pooling(self):
-        # Constant z = c on a block minimises sum(z log(z / y) - z + y) at
+        # Constant z = c on a block minimizes sum(z log(z / y) - z + y) at
         # log c = weighted mean of log y, so the KL fit is PAV in log space.
         expected = np.exp(isotonic_regression(np.log(Y), weights=W).x)
         np.testing.assert_allclose(_kl_pav_increasing(Y, W), expected)

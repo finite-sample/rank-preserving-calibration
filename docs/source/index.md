@@ -10,7 +10,7 @@ Welcome to the documentation for **rank_preserving_calibration**, a Python packa
 
 * **Two exact solvers**: a sparse QP (the default) and Dykstra's alternating projections, plus KL-divergence and soft-penalty variants
 * **Rank preservation**: Maintains the original ordering of predictions while satisfying calibration constraints
-* **Nearly isotonic calibration**: Support for relaxed isotonic constraints with an epsilon slack, or with rank violations penalised in `calibrate_soft`
+* **Nearly isotonic calibration**: Support for relaxed isotonic constraints with an epsilon slack, or with rank violations penalized in `calibrate_soft`
 * **Robust implementation**: Numerically stable algorithms with comprehensive error handling
 * **Comprehensive testing**: Extensive test suite ensuring mathematical correctness
 

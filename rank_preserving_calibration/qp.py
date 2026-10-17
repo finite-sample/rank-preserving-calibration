@@ -1,6 +1,6 @@
 """Exact rank-preserving calibration by sparse quadratic programming.
 
-The problem is a convex QP: minimise ``||Q - P||_F^2`` subject to unit row sums,
+The problem is a convex QP: minimize ``||Q - P||_F^2`` subject to unit row sums,
 column sums equal to ``M``, non-negativity, and within-column isotonicity in the
 order of the original scores. Written sparsely it has ``N*J`` variables and about
 ``2*N*J`` constraint rows, each with at most two non-zeros.
@@ -56,7 +56,7 @@ __all__ = ["calibrate_qp"]
 def _build_constraints(P: np.ndarray, M: np.ndarray, eps: float):
     """Assemble the sparse constraint system.
 
-    Built vectorised rather than with Python loops: at ``N=6400`` the loop-based
+    Built vectorized rather than with Python loops: at ``N=6400`` the loop-based
     construction, not the solve, dominated the runtime.
 
     Args:
@@ -137,7 +137,7 @@ def calibrate_qp(
 ) -> CalibrationResult:
     """Calibrate by solving the projection exactly as a sparse QP.
 
-    This is the recommended solver. It minimises ``||Q - P||_F^2`` over matrices
+    This is the recommended solver. It minimizes ``||Q - P||_F^2`` over matrices
     with unit row sums, column sums ``M``, non-negative entries, and columns that
     are non-decreasing in the order of the original scores -- the same problem
     :func:`~rank_preserving_calibration.calibrate_dykstra` solves by alternating
@@ -150,7 +150,7 @@ def calibrate_qp(
             fix the grand total, so any other total makes the problem infeasible.
         nearly: None for strict isotonicity, or ``{"mode": "epsilon", "eps": e}``
             to permit adjacent decreases of at most ``e``. Handled exactly, by
-            lowering the isotonic bound rather than by penalising violations.
+            lowering the isotonic bound rather than by penalizing violations.
         row_atol: Absolute tolerance on ``|row sum - 1|`` when reporting
             convergence.
         col_atol: Absolute tolerance on ``|column sum - M_j|``.
@@ -206,7 +206,7 @@ def calibrate_qp(
     A, b, n_eq, n_ineq = _build_constraints(P, M, eps)
     n = N * J
 
-    # Clarabel minimises 0.5 x' Pq x + q' x, and wants the upper triangle only.
+    # Clarabel minimizes 0.5 x' Pq x + q' x, and wants the upper triangle only.
     # Our objective is ||Q - P||^2 = x'x - 2 P'x + const, so Pq = 2I and q = -2P.
     quad = sp.triu(sp.identity(n, format="csc") * 2.0).tocsc()
     linear = -2.0 * P.reshape(-1)
