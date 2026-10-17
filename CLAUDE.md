@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 1. **Sparse QP** (`calibrate_qp`, the default behind `calibrate`) - exact, interior point
 2. **Dykstra's alternating projections** (`calibrate_dykstra`) - numpy-only reference implementation
 3. **KL-divergence calibration** (`calibrate_kl`, `calibrate_kl_soft`) - exponential-cone programs
-4. **Soft calibration** (`calibrate_soft`) - penalised marginals and rank violations, ADMM with exact prox
+4. **Soft calibration** (`calibrate_soft`) - penalised marginals and rank violations, a quadratic program solved by Clarabel
 5. **Two-stage IPF** (`calibrate_two_stage`) - IPF followed by isotonic projection
 
 The package projects probability matrices onto the intersection of:
@@ -49,11 +49,11 @@ The package projects probability matrices onto the intersection of:
 
 ### Nearly Isotonic Functions (nearly.py)
 - `project_near_isotonic_euclidean(v, eps, sum_target=None)`: Epsilon-slack projection
-- `prox_near_isotonic(v, lam)`: Lambda-penalty prox operator
+- `prox_near_isotonic(v, lam)`: Exact λ-penalty prox, by dynamic programming in O(n)
 - `prox_near_isotonic_with_sum(v, lam, sum_target)`: Prox with sum constraint
 
 ### Soft Calibration (soft_calibration.py)
-- `calibrate_soft(P, M, lam_m, lam_r, rho)`: ADMM with the exact prox of the rank penalty
+- `calibrate_soft(P, M, lam_m, lam_r)`: Quadratic program solved by Clarabel
 - `SoftCalibrationResult`: Result dataclass with objective breakdown
 
 ### Two-Stage IPF Calibration (two_stage.py)
@@ -78,7 +78,7 @@ The package projects probability matrices onto the intersection of:
 ### Algorithm Implementation Details
 - Dykstra's method uses alternating projections with memory terms (U, V arrays)
 - Row projections use numerically stable simplex projection algorithm
-- Column projections use Pool Adjacent Violators (PAV) isotonic regression
+- Column projections use isotonic regression by `scipy.optimize.isotonic_regression` (one shared helper in `_isotonic.py`)
 - KL calibration is an exponential-cone program (Clarabel); `calibrate_kl` is the
   penalised program at a weight certified large enough to leave no rank violations
 - Cycle detection available for Dykstra's method
@@ -243,7 +243,6 @@ result = calibrate_soft(P, M, lam_m=100.0, lam_r=1.0)
 
 ### Numerical Stability
 - All computations use float64 precision
-- Isotonic regression includes fallback for numerical edge cases
 - Input validation checks for NaN/infinite values and negative probabilities
 - Feasibility warnings when sum(M) differs significantly from N
 
@@ -255,10 +254,9 @@ result = calibrate_soft(P, M, lam_m=100.0, lam_r=1.0)
 ### Common Parameter Patterns
 - `P`: Input probability matrix (N×J)
 - `M`: Target column sums (length J)
-- `max_iters`: Algorithm iteration limits (3000 for Dykstra, 5000 for calibrate_soft)
-- `tol`: Convergence tolerances (1e-7 for Dykstra, 1e-8 for calibrate_soft, 1e-10 solver tolerance for KL)
+- `max_iters`: Dykstra's iteration limit (3000)
+- `tol`: Convergence tolerance (1e-7 for Dykstra; 1e-10 solver tolerance for the QP, soft and KL solvers)
 - `verbose`: Progress printing flag
-- `rtol`: Relative tolerance for isotonic regression (1e-12)
 - `nearly`: `{"mode": "epsilon", "eps": e}`
 
 ## Documentation

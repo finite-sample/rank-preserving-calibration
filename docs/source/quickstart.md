@@ -99,10 +99,9 @@ Key parameters for Dykstra's method:
 * `max_iters`: Maximum iterations (default 3000)
 * `tol`: Convergence tolerance (default 1e-7)
 * `verbose`: Print progress information
-* `rtol`: Relative tolerance for isotonic regression (1e-12)
 
 ```python
-result = calibrate_dykstra(P, M, max_iters=5000, tol=1e-8, verbose=True, rtol=1e-10)
+result = calibrate_dykstra(P, M, max_iters=5000, tol=1e-8, verbose=True)
 ```
 
 ## Next Steps

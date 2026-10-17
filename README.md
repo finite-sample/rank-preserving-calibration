@@ -235,7 +235,7 @@ Calibrate using Dykstra's alternating projections (recommended). Supports both s
 
 ### `calibrate_soft(P, M, lam_m, lam_r)`
 
-Minimise `0.5||Q - P||² + 0.5·lam_m·||Qᵀ1 - M||² + lam_r·Σ(downward steps)` with rows on the simplex, by ADMM with exact proximal steps.
+Minimise `0.5||Q - P||² + 0.5·lam_m·||Qᵀ1 - M||² + lam_r·Σ(downward steps)` with rows on the simplex, as a quadratic program solved exactly by Clarabel.
 
 ### `calibrate_kl(P, M, R=None, A=None)` and `calibrate_kl_soft(P, M, lam, R=None, A=None)`
 
@@ -276,7 +276,7 @@ Generate synthetic test data for various scenarios used in testing.
 
 * **Nearly Isotonic Extensions**:
   - **Epsilon-slack (Dykstra)**: Projects onto the convex set {z : z[i+1] ≥ z[i] - ε} using coordinate transformation. Maintains theoretical convergence guarantees.
-  - **Rank penalty (`calibrate_soft`)**: Minimises 0.5||Q - P||² + λ∑max(0, z[i] - z[i+1]) per column, alongside a marginal penalty, with the exact proximal operator of the penalty inside ADMM. Checked against an independent convex solver.
+  - **Rank penalty (`calibrate_soft`)**: Minimises 0.5||Q - P||² + λ∑max(0, z[i] - z[i+1]) per column, alongside a marginal penalty, as one quadratic program solved by an interior-point method. Checked against an independent convex solver.
 
 ## Examples
 

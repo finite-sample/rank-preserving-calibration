@@ -78,7 +78,7 @@ This maintains convexity and uses Euclidean projection onto the relaxed constrai
 
 $$\min_Q \frac{1}{2}\|Q - P\|_F^2 + \frac{\lambda_m}{2}\|Q^T\mathbf{1} - M\|^2 + \lambda_r \sum_j \sum_i \max(0, Q_{(i),j} - Q_{(i+1),j})$$
 
-with each row of $Q$ on the simplex, where $Q_{(i),j}$ is column $j$ in the order of $P$'s column $j$. It is solved by ADMM on the splits $Q = Z$ (simplex projection) and $Q = Y$ (the exact proximal operator of the penalty, per column). `calibrate_kl_soft` is the same idea with $\mathrm{KL}(Q\|R)$ in place of the squared error and hard marginals, solved exactly as an exponential-cone program.
+with each row of $Q$ on the simplex, where $Q_{(i),j}$ is column $j$ in the order of $P$'s column $j$. It is a quadratic program, with one hinge variable per adjacent pair standing in for each $\max(0, \cdot)$, solved by an interior-point method as `calibrate_qp` is. `calibrate_kl_soft` is the same idea with $\mathrm{KL}(Q\|R)$ in place of the squared error and hard marginals, solved exactly as an exponential-cone program.
 
 ## Convergence Properties
 
@@ -89,7 +89,7 @@ with each row of $Q$ on the simplex, where $Q_{(i),j}$ is column $j$ in the orde
 
 **Nearly Isotonic:**
 - Epsilon-slack: Maintains theoretical guarantees of Dykstra's method
-- Penalised violations (`calibrate_soft`): ADMM with exact proximal steps, stopped on primal and dual residuals; checked against an independent convex solver
+- Penalised violations (`calibrate_soft`): one interior-point solve of a quadratic program, checked against an independent convex solver
 
 **KL calibration:**
 - `calibrate_kl_soft` is an exponential-cone program solved by an interior-point method. `calibrate_kl` solves the same program at a penalty weight large enough that the minimiser has no rank violations; because the penalised problem relaxes the constrained one, a violation-free penalised minimiser is the constrained minimiser. Posing the isotonic constraints directly stalls the solver when many are active at once.
