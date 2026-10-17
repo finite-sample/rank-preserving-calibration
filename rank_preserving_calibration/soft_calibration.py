@@ -176,9 +176,7 @@ def calibrate_soft(
         Y = V.copy()
         if lam_r > 0:
             for j, idx in enumerate(column_orders):
-                Y[idx, j] = prox_near_isotonic(
-                    V[idx, j], lam_r / rho, abstol=1e-12, reltol=1e-10, max_iters=20000
-                )
+                Y[idx, j] = prox_near_isotonic(V[idx, j], lam_r / rho)
 
         u_z = u_z + Q - Z
         u_y = u_y + Q - Y
