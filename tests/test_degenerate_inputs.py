@@ -20,6 +20,9 @@ from rank_preserving_calibration import (
     prox_near_isotonic,
     prox_near_isotonic_with_sum,
 )
+from rank_preserving_calibration._isotonic import (
+    _isotonic_regression as _pav_increasing,
+)
 from rank_preserving_calibration.calibration import (
     _project_column_isotonic_sum,
     _run_lengths_of_equals,
@@ -30,7 +33,6 @@ from rank_preserving_calibration.kl_nearly import (
     prox_kl_near_isotonic,
 )
 from rank_preserving_calibration.metrics import classwise_ece
-from rank_preserving_calibration.nearly import _pav_increasing
 from rank_preserving_calibration.soft_calibration import _compute_rank_penalty
 
 Y = np.array([3.0, 1.0, 1.0, 2.0, 0.5, 0.5, 4.0, 3.5])
@@ -65,7 +67,6 @@ class TestPAVVariants:
     @pytest.mark.parametrize(
         "fit",
         [
-            _pav_increasing,
             _kl_pav_increasing,
             lambda y: prox_near_isotonic(y, 1.0),
             lambda y: prox_kl_near_isotonic(y, 1.0),

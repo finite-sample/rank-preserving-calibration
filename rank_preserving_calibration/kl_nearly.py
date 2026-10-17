@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ._isotonic import _isotonic_regression
+
 __all__ = [
     "project_near_kl_isotonic",
     "prox_kl_near_isotonic",
@@ -40,45 +42,10 @@ def _kl_pav_increasing(
     Returns:
         Isotonic fit minimizing weighted KL divergence.
     """
-    y = np.asarray(y, dtype=np.float64)
-    n = y.size
-    if n <= 1:
-        return np.maximum(y.copy(), eps)
-
-    y = np.maximum(y, eps)
-
-    w = np.ones(n, dtype=np.float64) if w is None else np.asarray(w, dtype=np.float64)
-
-    log_y = np.log(y)
-
-    start = np.empty(n, dtype=np.int64)
-    log_sum = np.empty(n, dtype=np.float64)
-    wsum = np.empty(n, dtype=np.float64)
-    top = -1
-
-    for i in range(n):
-        top += 1
-        start[top] = i
-        log_sum[top] = w[i] * log_y[i]
-        wsum[top] = w[i]
-
-        while top > 0:
-            left_mean = log_sum[top - 1] / wsum[top - 1]
-            right_mean = log_sum[top] / wsum[top]
-            if left_mean <= right_mean:
-                break
-            log_sum[top - 1] += log_sum[top]
-            wsum[top - 1] += wsum[top]
-            top -= 1
-
-    z = np.empty(n, dtype=np.float64)
-    for j in range(top + 1):
-        s = start[j]
-        e = start[j + 1] if j < top else n
-        block_mean = log_sum[j] / wsum[j]
-        z[s:e] = np.exp(block_mean)
-
-    return z
+    # The KL fit pools by weighted geometric means, which is weighted
+    # least-squares isotonic regression of log y.
+    y = np.maximum(np.asarray(y, dtype=np.float64), eps)
+    return np.exp(_isotonic_regression(np.log(y), w))
 
 
 def project_near_kl_isotonic(

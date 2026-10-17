@@ -14,12 +14,14 @@ import numpy as np
 import pytest
 
 from rank_preserving_calibration import calibrate_dykstra
+from rank_preserving_calibration._isotonic import (
+    _isotonic_regression as _pav_increasing,
+)
 from rank_preserving_calibration.calibration import (
     _project_column_isotonic_sum,
     _project_row_simplex,
 )
 from rank_preserving_calibration.nearly import (
-    _pav_increasing,
     project_near_isotonic_euclidean,
     prox_near_isotonic,
     prox_near_isotonic_with_sum,

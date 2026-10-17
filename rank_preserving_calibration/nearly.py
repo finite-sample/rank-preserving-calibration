@@ -17,89 +17,13 @@ from typing import Literal, overload
 
 import numpy as np
 
+from ._isotonic import _isotonic_regression
+
 __all__ = [
     "project_near_isotonic_euclidean",
     "prox_near_isotonic",
     "prox_near_isotonic_with_sum",
 ]
-
-# ---------------------------------------------------------------------
-# Weighted isotonic regression (PAV) in O(n)
-# ---------------------------------------------------------------------
-
-
-def _pav_increasing(
-    y: np.ndarray, w: np.ndarray | None = None, rtol: float = 0.0
-) -> np.ndarray:
-    """Pool-Adjacent-Violators (L2) for a nondecreasing 1D fit, with weights.
-
-    Args:
-        y: Sequence of shape (n,) to fit monotonically, already in the
-            order you care about.
-        w: Positive weights of shape (n,). If None, all ones.
-        rtol: Tolerance used in the merge decision -- blocks count as
-            monotone when left_mean <= right_mean + rtol *
-            (|left_mean| + |right_mean| + 1).
-
-    Returns:
-        Isotonic fit of shape (n,) minimizing sum_i w_i * (z_i - y_i)^2
-        subject to z nondecreasing.
-
-    Raises:
-        ValueError: If the weights are not positive or do not match y.
-
-    Notes:
-        - Strict by default (rtol=0.0) to avoid micro-violations in tests.
-        - Idempotent: applying to an already isotone sequence returns it
-          unchanged.
-    """
-    y = np.asarray(y, dtype=np.float64)
-    n = y.size
-    if n <= 1:
-        return y.copy()
-
-    if w is None:
-        w = np.ones(n, dtype=np.float64)
-    else:
-        w = np.asarray(w, dtype=np.float64)
-        if w.shape != y.shape:
-            raise ValueError("weights must have the same shape as y")
-        if np.any(w <= 0):
-            raise ValueError("weights must be strictly positive")
-
-    # Block stacks: start index (in original index space), weighted mean, weight sum.
-    start = np.empty(n, dtype=np.int64)
-    mean = np.empty(n, dtype=np.float64)
-    wsum = np.empty(n, dtype=np.float64)
-    top = -1
-
-    def _tol(a: float, b: float) -> float:
-        return rtol * (abs(a) + abs(b) + 1.0)
-
-    for i in range(n):
-        top += 1
-        start[top] = i
-        mean[top] = y[i]
-        wsum[top] = w[i]
-
-        # Merge backward while violating monotonicity beyond tolerance
-        while top > 0:
-            left, right = mean[top - 1], mean[top]
-            if left <= right + _tol(left, right):
-                break
-            new_w = wsum[top - 1] + wsum[top]
-            mean[top - 1] = (wsum[top - 1] * left + wsum[top] * right) / new_w
-            wsum[top - 1] = new_w
-            top -= 1
-
-    # Expand the piecewise-constant block means back to length n
-    z = np.empty(n, dtype=np.float64)
-    for j in range(top + 1):
-        s = start[j]
-        e = start[j + 1] if j < top else n
-        z[s:e] = mean[j]
-    return z
-
 
 # ---------------------------------------------------------------------
 # (A) Hard-slack (ε) nearly isotonic projection
@@ -150,7 +74,7 @@ def project_near_isotonic_euclidean(
 
     ar = np.arange(n, dtype=np.float64)
     w = v + eps * ar
-    iw = _pav_increasing(w, weights, rtol=0.0)
+    iw = _isotonic_regression(w, weights)
     z = iw - eps * ar
 
     if sum_target is not None:
