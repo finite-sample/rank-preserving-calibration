@@ -128,7 +128,7 @@ result = calibrate(P, M, nearly={"mode": "epsilon", "eps": 0.05})
 # objective, not the constraint set, so it lives in its own function.
 from rank_preserving_calibration import calibrate_soft
 
-result = calibrate_soft(P, M, lam_m=100.0, lam_r=1.0)
+soft = calibrate_soft(P, M, lam_m=100.0, lam_r=1.0)
 ```
 
 The returned `CalibrationResult` contains the calibrated matrix `Q` with the same shape as `P`. Each row of `Q` sums to one, the column sums match `M`, and within each column the entries are sorted in non-decreasing order according to the order implied by the original `P`.
