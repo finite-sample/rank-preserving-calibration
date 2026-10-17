@@ -116,7 +116,7 @@ def project_near_kl_isotonic(
         # was not the projection.
         # The weights span exp(-delta * n), which underflows for long inputs,
         # so each block keeps its mean and its log-weight, and merging uses
-        # only the ratio of neighbouring weights. scipy's PAVA cannot take
+        # only the ratio of neighboring weights. scipy's PAVA cannot take
         # weights in log form, which is why this pooling is written out here.
         log_w = np.log(w_weights) - delta * np.arange(n)
 

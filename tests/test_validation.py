@@ -76,7 +76,7 @@ def test_dykstra_warns_and_raises_when_sum_of_m_is_not_n():
 @pytest.mark.parametrize("N", [30, 1000])
 def test_ipf_convergence_means_the_returned_columns_are_within_tol(N):
     # A per-row gap below tol let the column error after the final row
-    # normalisation reach 0.029 at N = 1000, tol = 1e-3, yet report success.
+    # normalization reach 0.029 at N = 1000, tol = 1e-3, yet report success.
     rng = np.random.default_rng(0)
     P = rng.dirichlet(np.ones(3), size=N)
     M = P.sum(axis=0) * np.linspace(1.3, 0.7, 3)

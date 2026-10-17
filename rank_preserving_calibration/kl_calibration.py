@@ -203,7 +203,7 @@ def calibrate_kl(
     tol: float = 1e-10,
     verbose: bool = False,
 ) -> KLCalibrationResult:
-    """Calibrate by minimising KL divergence under rank preservation.
+    """Calibrate by minimizing KL divergence under rank preservation.
 
     Solves exactly, as an exponential-cone program::
 
@@ -243,8 +243,8 @@ def calibrate_kl(
     """
     _configure_logging(verbose)
     P, M, R, A = _prepare_kl(P, M, R, A, tol)
-    # Exact penalty with a certificate. The penalised problem relaxes the
-    # constrained one, so a penalised minimiser with no rank violations is the
+    # Exact penalty with a certificate. The penalized problem relaxes the
+    # constrained one, so a penalized minimiser with no rank violations is the
     # constrained minimiser. Posing the constraints directly stalls the
     # interior-point solver when many of them are active at once; the hinge
     # variables keep the problem strictly interior.
@@ -286,7 +286,7 @@ def _solve_kl_once(
     tol: float,
     verbose: bool,
 ) -> tuple[np.ndarray, str, int]:
-    """Minimise KL(Q||R) + lam * V_A(Q) over C(M) as an exponential-cone program.
+    """Minimize KL(Q||R) + lam * V_A(Q) over C(M) as an exponential-cone program.
 
     Variables are x = [q, t, v]: the N*J entries of Q (row-major), one
     epigraph variable per entry with t >= q log(q / r), and one hinge per

@@ -74,7 +74,7 @@ class TestIsotonicRegression:
 
     @pytest.mark.parametrize("seed", range(3))
     def test_kl_fit_matches_the_kl_program(self, seed):
-        # Geometric-mean pooling minimises the generalised KL divergence
+        # Geometric-mean pooling minimizes the generalized KL divergence
         # sum w (z log(z / y) - z + y), which is cvxpy's kl_div; dropping the
         # -z + y terms would move the optimum by a factor of e.
         rng = np.random.default_rng(seed)

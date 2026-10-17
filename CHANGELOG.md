@@ -117,7 +117,7 @@ read Removed before upgrading.
   iteratively, about 1.5 s at N=30.
 - The KL solvers preserve rank to solver precision (violations at most 1e-8),
   not exactly; `calibrate_qp` still drives them to zero.
-- The row-simplex projection is vectorised in numpy, about 5x faster than the
+- The row-simplex projection is vectorized in numpy, about 5x faster than the
   Numba version was and 80x faster than the old pure-Python fallback.
 - The documentation's changelog page includes this file instead of a stale
   copy that ended at 0.8.0.
@@ -125,7 +125,7 @@ read Removed before upgrading.
 ### Removed
 - `calibrate_admm`, `ADMMResult` and `calibrate(method="admm")` (#39). Its
   returned matrix was always `calibrate_dykstra`'s, recomputed from `P`, and
-  its `nearly={"mode": "lambda"}` option never reached the output. Penalised
+  its `nearly={"mode": "lambda"}` option never reached the output. Penalized
   rank violations are `calibrate_soft`.
 - `calibrate_soft_admm`, merged into `calibrate_soft`.
 - Positional `rho`, `max_iters`, `tol` and `verbose` in `calibrate_soft`; they
@@ -200,7 +200,7 @@ usable at scale is gone.
   `False`), and returned its raw iterate — 27 rank violations on a 25-row problem, with
   an objective *below* the true optimum because the point was infeasible. It now
   raises, and the projection gets a budget proportional to `N` rather than a flat 1500.
-- **The documented behaviour on infeasible targets was wrong.** The README promised
+- **The documented behavior on infeasible targets was wrong.** The README promised
   convergence to "the closest point satisfying both sets of constraints"; no such point
   exists when the sets are disjoint, and the code raises. Feasibility requires
   `sum(M) == N` exactly — the warning fired only above 10% of `N`, so a 2% mismatch
@@ -209,7 +209,7 @@ usable at scale is gone.
 
 ### Changed
 - **`calibrate_ovr_isotonic` is documented as the baseline it is.** Its row
-  normalisation inverts **57%** of adjacent within-class pairs on columns that are
+  normalization inverts **57%** of adjacent within-class pairs on columns that are
   perfectly isotonic beforehand — it does not preserve rank, despite living in a
   package named for it. Tied scores are now pooled before interpolation, so the result
   no longer depends on row order.
