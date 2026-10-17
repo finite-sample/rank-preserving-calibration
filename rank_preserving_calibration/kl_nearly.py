@@ -92,30 +92,27 @@ def project_near_kl_isotonic(
 
     The constraint is: z[i+1] >= z[i] * (1 - eps_slack)
 
-    This is the KL analog of the Euclidean nearly-isotonic projection.
-    The key insight is to transform to log space::
-
-        log(z[i+1]) >= log(z[i]) + log(1 - eps_slack)
-
-    Let delta = -log(1 - eps_slack) > 0. Then::
-
-        log(z[i+1]) >= log(z[i]) - delta
-
-    This is equivalent to the additive slack problem in log space.
+    This is the KL analog of the Euclidean nearly-isotonic projection. With
+    u[i] = z[i] / c**i and c = 1 - eps_slack the constraint becomes plain
+    isotonicity in u, and KL(z||v) becomes a KL isotonic regression in u with
+    weights c**i, solved by geometric-mean pooling.
 
     Args:
         v: Input vector (positive values).
         eps_slack: Multiplicative slack parameter (0 to 1).
             eps_slack=0 is strict isotonic, eps_slack=0.1 allows 10% violation.
-        sum_target: If provided, apply multiplicative rescaling to hit this sum.
-        weights: Optional weights for weighted projection.
+        sum_target: If provided, the projection also sums to this. Exact by
+            multiplicative rescaling, which holds only for uniform weights.
+        weights: Optional weights for weighted projection; cannot be combined
+            with sum_target unless uniform.
         eps: Numerical stability constant.
 
     Returns:
         Near-isotonic projection in KL sense.
 
     Raises:
-        ValueError: If eps_slack is outside [0, 1).
+        ValueError: If eps_slack is outside [0, 1), or sum_target is combined
+            with non-uniform weights.
     """
     v = np.asarray(v, dtype=np.float64)
     n = v.size
@@ -127,6 +124,10 @@ def project_near_kl_isotonic(
 
     if eps_slack < 0 or eps_slack >= 1:
         raise ValueError("eps_slack must be in [0, 1)")
+    # The sum constraint's multiplier mu turns the reference v_i into
+    # v_i * exp(-mu / w_i); only uniform weights make that a common factor.
+    if sum_target is not None and weights is not None and np.ptp(weights) > 0:
+        raise ValueError("sum_target requires uniform weights")
 
     v = np.maximum(v, eps)
 
@@ -141,33 +142,40 @@ def project_near_kl_isotonic(
             w_weights = np.ones(n, dtype=np.float64)
         else:
             w_weights = np.asarray(weights, dtype=np.float64)
+        # With u_i = z_i / c^i, c = 1 - eps_slack, the slack constraint is plain
+        # isotonicity in u, and KL(z||v) = sum_i c^i [u_i log(u_i / r_i) - u_i]
+        # + const with r_i = v_i / c^i. So each entry pools with weight c^i;
+        # pooling with the original weights alone gave a feasible point that
+        # was not the projection.
+        # The weights span exp(-delta * n), which underflows for long inputs,
+        # so each block keeps its mean and its log-weight, and merging uses
+        # only the ratio of neighbouring weights. scipy's PAVA cannot take
+        # weights in log form, which is why this pooling is written out here.
+        log_w = np.log(w_weights) - delta * np.arange(n)
 
         start = np.empty(n, dtype=np.int64)
-        wlog_sum = np.empty(n, dtype=np.float64)
-        wsum = np.empty(n, dtype=np.float64)
+        mean = np.empty(n, dtype=np.float64)
+        log_wsum = np.empty(n, dtype=np.float64)
         top = -1
 
         for i in range(n):
             top += 1
             start[top] = i
-            wlog_sum[top] = w_weights[i] * w_shifted[i]
-            wsum[top] = w_weights[i]
+            mean[top] = w_shifted[i]
+            log_wsum[top] = log_w[i]
 
-            while top > 0:
-                left_mean = wlog_sum[top - 1] / wsum[top - 1]
-                right_mean = wlog_sum[top] / wsum[top]
-                if left_mean <= right_mean:
-                    break
-                wlog_sum[top - 1] += wlog_sum[top]
-                wsum[top - 1] += wsum[top]
+            while top > 0 and mean[top - 1] > mean[top]:
+                merged = np.logaddexp(log_wsum[top - 1], log_wsum[top])
+                share = np.exp(log_wsum[top] - merged)
+                mean[top - 1] += share * (mean[top] - mean[top - 1])
+                log_wsum[top - 1] = merged
                 top -= 1
 
         log_z_shifted = np.empty(n, dtype=np.float64)
         for j in range(top + 1):
             s = start[j]
             e = start[j + 1] if j < top else n
-            block_mean = wlog_sum[j] / wsum[j]
-            log_z_shifted[s:e] = block_mean
+            log_z_shifted[s:e] = mean[j]
 
         log_z = log_z_shifted - delta * np.arange(n)
         z = np.exp(log_z)

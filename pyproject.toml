@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "rank_preserving_calibration"
-version = "0.9.1"
+version = "0.10.0"
 description = "Rank-preserving calibration of multiclass probabilities via Dykstra's projections and ADMM."
 readme = "README.md"
 license = "MIT"

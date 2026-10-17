@@ -307,7 +307,7 @@ def compare_calibration_methods(
         # Rank violations
         max_rank_violation = 0.0
         for j in range(Q.shape[1]):
-            idx = np.argsort(P[:, j])
+            idx = np.argsort(P[:, j], kind="mergesort")
             q_sorted = Q[idx, j]
             if q_sorted.size > 1:
                 diffs = np.diff(q_sorted)

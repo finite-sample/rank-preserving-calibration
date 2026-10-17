@@ -7,10 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-16
+
+Every solver is now tested against one that shares no code with it (cvxpy,
+scipy, scikit-learn or IPF). That found `calibrate_kl`, `calibrate_kl_soft`,
+`calibrate_soft`, `calibrate_ovr_isotonic` and `ties="group"` returning wrong
+answers. Several functions that duplicated others or did nothing are removed;
+read Removed before upgrading.
+
 ### Fixed
-- The KL solvers judge convergence on the returned matrix (row and column
-  errors at most 1e-7), not on the solver's status, so a stall retried at a
-  looser tolerance cannot report constraints it misses.
+- `ties="group"` returned garbage from `calibrate_dykstra`. The weighted
+  isotonic step expanded each pooled block by its weight instead of its
+  element count, writing past the end of the output. It now matches an
+  independent QP solution.
+- `calibrate_ovr_isotonic` was off by up to 0.31 whenever scores tied, from the
+  same weighted isotonic bug. It now matches scikit-learn's
+  `IsotonicRegression` exactly. Labels outside `[0, J)`, or not real numbers,
+  now raise; they produced NaN or were silently cast.
 - `calibrate_kl` stopped short of the optimum it claimed: on a 30-row problem
   its KL was 1.5443 against a true constrained optimum of 1.5345. It is now
   solved exactly as an exponential-cone program (Clarabel). It solves the
@@ -20,29 +33,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `calibrate_kl_soft` never converged, and above λ ≈ 10 a larger penalty gave
   more rank violation (#37). It is now the same exponential-cone program, exact
   at every λ, so `calibrate_kl_pareto` traces a monotone frontier.
+- The KL solvers judge convergence on the returned matrix (row and column
+  errors at most 1e-7), not on the solver's status, so a stall retried at a
+  looser tolerance cannot report constraints it misses.
 - `calibrate_soft` stopped far from its optimum whenever `lam_r > 0`: its rank
   step was ten subgradient iterations. At `lam_r = 1` it reported convergence
-  at an objective of 0.548 against a true 0.290. It is now ADMM with the exact
-  proximal operator of the rank penalty and stops on primal and dual
-  residuals.
+  at an objective of 0.548 against a true 0.290. Its ADMM variant also
+  weighted the marginal penalty by `lam_m / N`. It is now one ADMM with the
+  exact proximal operator of the rank penalty, stops on primal and dual
+  residuals, and matches an independent solver to 1e-7.
+- `calibrate_ipf` reported `converged=True` when its columns missed `M`.
+  Convergence now means the returned matrix's column error is below `tol`.
 - `nearly` with any mode other than `"epsilon"` was silently treated as strict
   isotonic; it now raises.
-- `ties="group"` returned garbage from `calibrate_dykstra` and `calibrate_admm`.
-  The weighted isotonic step expanded each pooled block by its weight instead
-  of its element count, writing past the end of the output. ADMM also passed
-  `ties="stable"` to its final projection whatever the caller asked for. Both
-  now match an independent QP solution.
-- `calibrate_ovr_isotonic` was off by up to 0.31 whenever scores tied, from the
-  same weighted isotonic bug. It now matches scikit-learn's
-  `IsotonicRegression` exactly.
-- `calibrate_soft_admm` weighted the marginal penalty by `lam_m / N` instead
-  of `lam_m`.
-- `calibrate_soft` used a fixed step past the stable limit and could oscillate
-  between simplex corners, emptying whole classes. The step is now capped at
-  1/L.
-- `calibrate_ipf` reported `converged=True` when its columns missed `M`.
 - `calibrate_kl_pareto` returned an empty frontier on malformed input instead
   of raising.
+- Rank-violation diagnostics sorted tied scores with an unstable sort while
+  the constraints used a stable one, so ties could read as violations. With
+  the new certificate that made `calibrate_kl` reject feasible problems with
+  tied scores. Every diagnostic now uses the stable order.
+- `project_near_kl_isotonic` returned a feasible point that was not the KL
+  projection whenever `eps_slack > 0`: it pooled without the weights the slack
+  substitution introduces. It now matches an independent solver. Combining
+  `sum_target` with non-uniform weights, which rescaling cannot make exact,
+  now raises.
 - `classwise_ece` returned the sum of the per-class ECEs instead of their mean,
   so it was too large by a factor of the number of classes. It now follows
   Kull et al. (2019), eq. 4.
@@ -50,11 +64,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calibrated column with flat runs depended on how the rows happened to be
   sorted. Tied scores now share their average rank, as in the standard
   Mann-Whitney AUC.
-- `informativeness_ratio` warned about an empty mean when every column of the
-  original was flat; `mean_column_ratio` is now NaN in that case.
+- `informativeness_ratio` warned about an empty mean when every column's
+  ratio was infinite, that is, each original column was flat and its
+  calibrated column was not; `mean_column_ratio` is now NaN in that case.
 - Every docstring example runs and records its output, and the docs build runs
   them again. The quick start's targets did not sum to the number of rows, so
   it could not converge; several examples used targets the input already met.
+
+### Changed
+- `calibrate_soft` is slower: its rank step is an exact prox, itself solved
+  iteratively, about 1.5 s at N=30.
+- The KL solvers preserve rank to solver precision (violations at most 1e-8),
+  not exactly; `calibrate_qp` still drives them to zero.
+- The row-simplex projection is vectorised in numpy, about 5x faster than the
+  Numba version was and 80x faster than the old pure-Python fallback.
+- The documentation's changelog page includes this file instead of a stale
+  copy that ended at 0.8.0.
 
 ### Removed
 - `calibrate_admm`, `ADMMResult` and `calibrate(method="admm")` (#39). Its
@@ -67,15 +92,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   misread now that `rho` comes first.
 - The `max_iters` and `eps` arguments of the KL solvers, which no longer
   iterate.
-- `classwise_ece(balanced=...)`. It weighted bins, not classes, so it did not
-  do what it said.
-- Two compiled helpers that nothing called.
-- The `[performance]` extra, Numba, and the `use_jit` argument. The row-simplex
-  projection is now vectorised in numpy, which is about 5x faster than the
-  Numba version was and 80x faster than the old pure-Python fallback.
+- The `[performance]` extra, Numba, the `use_jit` argument, and two compiled
+  helpers nothing called.
 - `nll` and `brier`. They duplicated `sklearn.metrics.log_loss` and
   `sklearn.metrics.brier_score_loss(..., scale_by_half=False)`, which give the
   same numbers.
+- `classwise_ece(balanced=...)`. It weighted bins, not classes, so it did not
+  do what it said.
 
 ## [0.9.1] - 2026-10-14
 

@@ -498,5 +498,80 @@ class TestKLConvergenceIsJudgedOnTheMatrix:
             calibrate_kl(P, M)
 
 
+class TestKLTiedScores:
+    def test_hard_problem_with_ties_reaches_the_constrained_optimum(self):
+        # Tied scores used to read as violations under an unstable sort, so
+        # the certificate rejected this feasible problem.
+        cp = pytest.importorskip("cvxpy")
+        P = np.random.default_rng(0).integers(1, 6, (20, 3)).astype(float)
+        P /= P.sum(axis=1, keepdims=True)
+        M = P.sum(axis=0) * np.array([1.3, 1.0, 0.7])
+        M *= len(P) / M.sum()
+        result = calibrate_kl(P, M)
+
+        Q = cp.Variable(P.shape)
+        cons = [cp.sum(Q, axis=1) == 1, cp.sum(Q, axis=0) == M]
+        for j in range(P.shape[1]):
+            o = np.argsort(P[:, j], kind="mergesort")
+            cons.append(Q[o[1:], j] >= Q[o[:-1], j])
+        problem = cp.Problem(cp.Minimize(cp.sum(cp.kl_div(Q, P))), cons)
+        problem.solve(solver=cp.CLARABEL)
+        assert problem.status == "optimal"
+        assert result.kl_divergence == pytest.approx(problem.value, abs=1e-6)
+
+
+class TestKLSlackProjection:
+    """project_near_kl_isotonic against the convex problem it claims to solve."""
+
+    @staticmethod
+    def _oracle(v, eps_slack, w, s):
+        cp = pytest.importorskip("cvxpy")
+        z = cp.Variable(len(v))
+        cons = [z[i + 1] >= (1 - eps_slack) * z[i] for i in range(len(v) - 1)]
+        if s is not None:
+            cons.append(cp.sum(z) == s)
+        cp.Problem(cp.Minimize(cp.sum(cp.multiply(w, cp.kl_div(z, v)))), cons).solve(
+            solver=cp.CLARABEL
+        )
+        return z.value
+
+    @pytest.mark.parametrize(
+        ("eps_slack", "weighted", "s"),
+        [(0.5, False, 1.0), (0.2, False, None), (0.2, False, 3.0), (0.2, True, None)],
+    )
+    def test_matches_the_kl_projection(self, eps_slack, weighted, s):
+        from scipy.special import kl_div
+
+        rng = np.random.default_rng(1)
+        v = np.array([0.6, 0.1, 0.3]) if eps_slack == 0.5 else rng.uniform(0.05, 1, 12)
+        w = rng.uniform(0.5, 3, v.size) if weighted else None
+        ww = np.ones(v.size) if w is None else w
+        ours = project_near_kl_isotonic(v, eps_slack=eps_slack, sum_target=s, weights=w)
+        expected = self._oracle(v, eps_slack, ww, s)
+        assert np.all(ours[1:] >= (1 - eps_slack) * ours[:-1] - 1e-12)
+        # The oracle is accurate to its own tolerance, so compare objectives.
+        assert (ww * kl_div(ours, v)).sum() <= (ww * kl_div(expected, v)).sum() + 1e-7
+
+    def test_long_feasible_input_is_its_own_projection(self):
+        # The pooling weights c^i reach exp(-760) at n = 1100, eps = 0.5; as
+        # plain floats they underflowed to 0 and the pooling divided 0 by 0.
+        import warnings
+
+        v = np.full(1100, 0.5)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            z = project_near_kl_isotonic(v, eps_slack=0.5)
+        np.testing.assert_allclose(z, v, atol=1e-12)
+
+    def test_weighted_with_a_sum_target_raises(self):
+        with pytest.raises(ValueError, match="uniform weights"):
+            project_near_kl_isotonic(
+                np.array([0.6, 0.1, 0.3]),
+                0.2,
+                sum_target=1.0,
+                weights=np.array([1, 2, 3]),
+            )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

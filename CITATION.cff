@@ -6,8 +6,8 @@ abstract: "Rank-preserving calibration of multiclass probabilities via Dykstra's
 authors:
   - family-names: "Sood"
     given-names: "Gaurav"
-version: "0.9.1"
-date-released: "2026-10-14"
+version: "0.10.0"
+date-released: "2026-10-16"
 license: MIT
 repository-code: "https://github.com/finite-sample/rank-preserving-calibration"
 url: "https://finite-sample.github.io/rank-preserving-calibration/"
