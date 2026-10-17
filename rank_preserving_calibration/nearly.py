@@ -41,23 +41,25 @@ def project_near_isotonic_euclidean(
     Reduction: define w_i = v_i + i * eps. Then the constraint becomes standard
     isotonic on w. Let w* = isotonic(w) (weighted if weights are provided).
     The exact projection is z* = w* - i * eps. If sum_target is given, apply a
-    uniform shift so 1^T z* = sum_target (translation invariance makes this exact).
+    uniform shift so 1^T z* = sum_target. That is exact for uniform weights
+    only: the sum constraint's multiplier shifts entry i by mu / w_i.
 
     Args:
         v: Input vector of shape (n,) to project.
         eps: Slack parameter (>= 0). Allows z[i+1] >= z[i] - eps rather
             than the strict z[i+1] >= z[i].
         sum_target: If provided, apply an exact uniform shift so the
-            result sums to this value.
+            result sums to this value. Requires uniform weights.
         weights: Positive weights of shape (n,) for a weighted L2
-            projection.
+            projection; cannot be combined with sum_target unless uniform.
 
     Returns:
         Projected vector of shape (n,) satisfying the near-isotonic
         constraint, and the sum constraint if one was requested.
 
     Raises:
-        ValueError: If eps is negative or the weights are invalid.
+        ValueError: If eps is negative, the weights are invalid, or
+            sum_target is combined with non-uniform weights.
 
     Notes:
         - Idempotent: applying the projection twice gives the same result.
@@ -71,6 +73,8 @@ def project_near_isotonic_euclidean(
         return z
     if eps < 0:
         raise ValueError("eps must be nonnegative.")
+    if sum_target is not None and weights is not None and np.ptp(weights) > 0:
+        raise ValueError("sum_target requires uniform weights")
 
     ar = np.arange(n, dtype=np.float64)
     w = v + eps * ar

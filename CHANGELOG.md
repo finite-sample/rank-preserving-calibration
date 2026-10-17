@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-17
+
+Three hand-rolled pieces are replaced. Dykstra, the Euclidean slack
+projection, two-stage and the OvR baseline use scipy's isotonic regression;
+the nearly-isotonic prox is an exact O(n) algorithm; and `calibrate_soft` is a
+quadratic program instead of an ADMM. Answers are unchanged or more accurate,
+and every affected path is faster. Read Removed before upgrading.
+
 ### Changed
 - `calibrate_soft` is one quadratic program solved by Clarabel, as
   `calibrate_qp` is, instead of an ADMM. At N = 300 and 1000 the ADMM stopped at
@@ -19,11 +27,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   O(n), as Johnson's (2013) fused-lasso algorithm with the clip interval
   [-lam, 0]. It replaces an inner ADMM, is 16x faster at n = 1000, and
   matches an independent solver.
-- Isotonic regression everywhere is `scipy.optimize.isotonic_regression`, in
-  place of three pure-Python copies, one of which had mishandled weights in
-  0.9. Dykstra is 32x faster (100 iterations at N = 2000: 0.05 s against
+- Isotonic regression is `scipy.optimize.isotonic_regression`, in place of
+  three pure-Python copies, one of which had mishandled weights in 0.9. The
+  KL slack projection keeps its own log-weight pooling, because its weights
+  underflow as plain floats, and `prox_kl_near_isotonic` is still an
+  iterative ADMM. Dykstra is 32x faster (100 iterations at N = 2000: 0.05 s against
   1.60 s) with outputs unchanged to 1e-15. `scipy>=1.12` is now required.
 - The package description and keywords no longer mention ADMM.
+
+### Fixed
+- `project_near_isotonic_euclidean` with non-uniform `weights` and a
+  `sum_target` shifted every entry equally, which is optimal only for uniform
+  weights; it now raises. No solver passes weights, so none was affected.
 
 ### Removed
 - `calibrate_soft`'s `rho` and `max_iters`, which no longer apply.

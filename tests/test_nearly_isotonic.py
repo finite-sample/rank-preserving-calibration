@@ -251,3 +251,12 @@ class TestNearlyIsotonicConsistency:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def test_weighted_slack_projection_with_a_sum_target_raises():
+    # A uniform shift is not the weighted projection: for y = [0, 1],
+    # weights [1, 3], sum 2 the optimum is [0.75, 1.25], not [0.5, 1.5].
+    with pytest.raises(ValueError, match="uniform weights"):
+        project_near_isotonic_euclidean(
+            np.array([0.0, 1.0]), 0.0, sum_target=2.0, weights=np.array([1.0, 3.0])
+        )
