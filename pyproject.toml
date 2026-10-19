@@ -55,7 +55,7 @@ test = [
 ]
 dev = [
     { include-group = "test" },
-    "ruff==0.16.10",
+    "ruff==0.17.0",
     "pre-commit>=3.0",
     "pydoclint>=0.3.0",
     "pyright>=1.1.0",
