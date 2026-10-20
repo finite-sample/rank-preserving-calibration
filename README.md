@@ -312,7 +312,7 @@ This software is released under the terms of the MIT license.
 - [finite-sample/calibre](https://github.com/finite-sample/calibre) — Advanced Calibration Models
 - [finite-sample/streamcal](https://github.com/finite-sample/streamcal) — Streaming isotonic probability calibration with compact per-bin state and forgetting
 - [finite-sample/onlinerake](https://github.com/finite-sample/onlinerake) — Online raking with SGD or MWU
-- [finite-sample/winference](https://github.com/finite-sample/winference) — Calibrating pairwise rankings with accomodations for non-transitivity
+- [finite-sample/winference](https://github.com/finite-sample/winference) — Calibrating pairwise rankings with accommodations for non-transitivity
 - [finite-sample/fairlex](https://github.com/finite-sample/fairlex) — Leximin Calibration
 
 _Powered by [Adjacent](https://github.com/gojiplus/adjacent)_
