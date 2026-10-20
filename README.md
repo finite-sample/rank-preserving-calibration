@@ -310,8 +310,11 @@ This software is released under the terms of the MIT license.
 ## 🔗 Adjacent Repositories
 
 - [finite-sample/calibre](https://github.com/finite-sample/calibre) — Advanced Calibration Models
-- [finite-sample/optimal-classification-cutoffs](https://github.com/finite-sample/optimal-classification-cutoffs) — Script for calculating the optimal cut-off for max. F1-score, etc.
+- [finite-sample/streamcal](https://github.com/finite-sample/streamcal) — Streaming isotonic probability calibration with compact per-bin state and forgetting
+- [finite-sample/onlinerake](https://github.com/finite-sample/onlinerake) — Online raking with SGD or MWU
+- [finite-sample/winference](https://github.com/finite-sample/winference) — Calibrating pairwise rankings with accommodations for non-transitivity
 - [finite-sample/fairlex](https://github.com/finite-sample/fairlex) — Leximin Calibration
-- [finite-sample/pyppur](https://github.com/finite-sample/pyppur) — pyppur: Python Projection Pursuit Unsupervised (Dimension) Reduction To Min. Reconstruction Loss or DIstance DIstortion
+
+_Powered by [Adjacent](https://github.com/gojiplus/adjacent)_
 
 <!-- adjacent:end -->
