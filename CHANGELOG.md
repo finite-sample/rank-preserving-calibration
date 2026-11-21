@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-11-21
+
+`calibrate_dykstra(..., ties="group")` now pools equal scores with NumPy
+reductions. With 2,000 rows and three classes, the median time for the full
+call fell from 7.20 ms to 0.81 ms across seven paired runs. The default
+sparse quadratic-program solver uses a separate implementation.
+
 ## [0.11.0] - 2026-10-17
 
 Three hand-rolled pieces are replaced. Dykstra, the Euclidean slack
