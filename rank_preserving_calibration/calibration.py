@@ -278,16 +278,8 @@ def _run_lengths_of_equals(x_sorted: np.ndarray) -> np.ndarray:
     n = x_sorted.size
     if n == 0:
         return np.zeros(0, dtype=np.int64)
-    lens: list[int] = []
-    cnt = 1
-    for i in range(1, n):
-        if x_sorted[i] == x_sorted[i - 1]:
-            cnt += 1
-        else:
-            lens.append(cnt)
-            cnt = 1
-    lens.append(cnt)
-    return np.asarray(lens, dtype=np.int64)
+    boundaries = np.flatnonzero(x_sorted[1:] != x_sorted[:-1]) + 1
+    return np.diff(np.r_[0, boundaries, n])
 
 
 def _project_column_isotonic_sum(
@@ -318,13 +310,8 @@ def _project_column_isotonic_sum(
         case None | _:
             if ties == "group" and score_sorted is not None:
                 lens = _run_lengths_of_equals(score_sorted)
-                k = lens.size
-                y_group = np.empty(k, dtype=np.float64)
-                pos = 0
-                for g in range(k):
-                    L = int(lens[g])
-                    y_group[g] = float(np.mean(y[pos : pos + L]))
-                    pos += L
+                starts = np.cumsum(lens) - lens
+                y_group = np.add.reduceat(y, starts) / lens
                 z_group = _isotonic_regression(y_group, weights=lens.astype(np.float64))
                 total_n = int(lens.sum())
                 c = (float(target_sum) - float(np.dot(z_group, lens))) / float(total_n)
