@@ -334,3 +334,16 @@ class TestNumericalStability:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def test_column_projection_pools_unequal_tied_groups_before_shifting():
+    scores = np.array([0.3, 0.1, 0.1, 0.2, 0.4, 0.4, 0.4])
+    values = np.array([4.0, 2.0, 0.0, 0.0, 2.0, 3.0, 4.0])
+    order = np.argsort(scores, kind="stable")
+    # The first three and final four observations in score order form two pools.
+    expected = np.where(scores <= 0.2, 2.0 / 3.0, 13.0 / 4.0)
+    target = values.sum() + 1.75
+    actual = _project_column_isotonic_sum(
+        values, order, target, ties="group", score_sorted=scores[order]
+    )
+    np.testing.assert_allclose(actual, expected + 0.25, atol=1e-14)
