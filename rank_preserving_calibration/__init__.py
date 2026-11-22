@@ -36,7 +36,7 @@ except PackageNotFoundError:  # pragma: no cover
     __version__ = "unknown"
 
 __author__ = "Gaurav Sood"
-__email__ = "gsood07@gmail.com"
+__email__ = ""
 
 # Public API: solvers and results
 # Public API: analysis utilities for flatness and shift diagnostics
