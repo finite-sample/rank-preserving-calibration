@@ -2,12 +2,10 @@
 \usepackage{working-paper}
 \usepackage{amsmath,amsthm}
 \usepackage{graphicx,booktabs,longtable,array}
-\usepackage{listings}
 \usepackage{xurl}
 \usepackage{enumitem}
 
 \newtheorem{proposition}{Proposition}
-\lstset{basicstyle=\small\ttfamily,breaklines=true,columns=fullflexible,keepspaces=true}
 \setlength{\emergencystretch}{2em}
 \graphicspath{{generated/}}
 \input{generated/numbers}
@@ -230,7 +228,7 @@ To examine \citet{mitchell2025}'s survey-statistics motivation directly, we insp
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\linewidth]{fig_real_pareto.pdf}
-\caption{Held-out Brier score versus weak-order rank preservation rate along the KL $\lambda$-path (means over 5 seeds). Open circles mark IPF ($\lambda=0$); filled squares mark strict weak-order KL ($\lambda=\infty$). Under real subpopulation and geographic covariate shifts (left and middle), moderate rank regularization lowers Brier score for nonlinear classifiers (MLP, HGB, RF) while raising rank preservation; under pure label shift (right) and calibrated LogReg, the curve slopes upward as Proposition~\ref{prop:ipf} predicts.}
+\caption{Held-out Brier score versus weak-order rank preservation rate along the KL $\lambda$-path (means over 5 seeds); down and right is better. Open circles mark IPF ($\lambda=0$); filled squares mark strict weak-order KL ($\lambda=\infty$). Under real subpopulation and geographic covariate shifts (left and middle), moderate rank regularization lowers Brier score for nonlinear classifiers (MLP, HGB, RF) while raising rank preservation; under pure label shift (right) and calibrated LogReg, the curve slopes upward as Proposition~\ref{prop:ipf} predicts.}
 \label{fig:real_pareto}
 \end{figure}
 
@@ -324,7 +322,7 @@ Adding the two inequalities yields $(\lambda_2 - \lambda_1)[V_A(Q_2) - V_A(Q_1)]
 \end{proof}
 
 \clearpage
-\section{Complete Real-Data Results and Reproduction}
+\section{Complete Real-Data Results}
 \label{app:details}
 
 Table~\ref{tab:real_by_dataset} reports mean performance for every dataset and shift regime averaged across all four model families and ten seeds.
@@ -332,16 +330,5 @@ Table~\ref{tab:real_by_dataset} reports mean performance for every dataset and s
 \begingroup\footnotesize\setlength{\tabcolsep}{4pt}
 \input{generated/real_by_dataset_table.tex}
 \endgroup
-
-\subsection{Reproduction}
-
-All package tests, benchmark experiments, exhibits, and this manuscript reproduce from the repository root (\url{https://github.com/finite-sample/rank-preserving-calibration}, v0.12.0):
-\begin{lstlisting}
-uv sync --all-groups
-uv run pytest
-uv run --with pandas --with matplotlib python ms/experiments/run_benchmark.py
-uv run --with pandas --with matplotlib --with jinja2 python ms/experiments/build_exhibits.py
-latexmk -cd -pdf -interaction=nonstopmode -halt-on-error -Werror ms/rank-preserving-multiclass.tex
-\end{lstlisting}
 
 \end{document}
