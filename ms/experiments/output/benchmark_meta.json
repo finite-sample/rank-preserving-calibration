@@ -1,0 +1,7 @@
+{
+  "n_seeds_synth": 20,
+  "n_seeds_real": 10,
+  "n_seeds_pareto": 5,
+  "soft_lam": 2.0,
+  "elapsed_seconds": 814.8
+}

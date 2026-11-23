@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-23
+
+Exact weak-order tie handling in the KL solvers and direct hard-constraint
+conic solves for `calibrate_kl`.
+
+### Changed
+- `calibrate_kl`, `calibrate_kl_soft`, and `calibrate_kl_pareto` now default to
+  `ties="weak"`, encoding exact weak-order constraints between distinct score
+  blocks via monotone block-boundary variables instead of imposing arbitrary
+  inequalities inside tied score groups (which caused over-constrained solves
+  and higher KL on discrete-score classifiers like Random Forests). Pass
+  `ties="stable"` for the previous row-order tie convention.
+- `calibrate_kl` solves the hard weak-order constraint directly in Clarabel
+  instead of relying solely on an exact-penalty loop up to `lam = 1e5`, and
+  scales feasibility/rank certification tolerances with the requested `tol` so
+  peaked inputs converge on the first solve.
+
+### Fixed
+- Fixed false `CalibrationError` rejections on discrete-score and peaked
+  multiclass matrices (e.g., Random Forests on 10-class `digits`) where
+  arbitrary intra-tie constraints or hardcoded `1e-8` certification tolerances
+  rejected valid optimal solutions.
+- Fixed `calibrate_kl_pareto` to record the exact L1 rank-violation functional
+  consistent with the penalized objective.
+
 ## [0.11.1] - 2026-11-21
 
 `calibrate_dykstra(..., ties="group")` now pools equal scores with NumPy

@@ -1,33 +1,21 @@
 \documentclass[11pt]{article}
 \usepackage{working-paper}
 \usepackage{amsmath,amsthm}
-\usepackage{algorithm}
-\usepackage{algorithmic}
-\usepackage{graphicx}
-\usepackage{booktabs}
-\usepackage[hidelinks]{hyperref}
-
-\usepackage{xcolor}
+\usepackage{graphicx,booktabs,longtable,array}
+\usepackage{listings}
+\usepackage{xurl}
 \usepackage{enumitem}
 
-% Theorem environments
-\newtheorem{theorem}{Theorem}[section]
-\newtheorem{lemma}[theorem]{Lemma}
-\newtheorem{proposition}[theorem]{Proposition}
-\newtheorem{corollary}[theorem]{Corollary}
-\newtheorem{definition}[theorem]{Definition}
+\newtheorem{proposition}{Proposition}
+\lstset{basicstyle=\small\ttfamily,breaklines=true,columns=fullflexible,keepspaces=true}
+\setlength{\emergencystretch}{2em}
+\graphicspath{{generated/}}
+\input{generated/numbers}
 
-% Notation shortcuts
-\newcommand{\R}{\mathbb{R}}
-\newcommand{\norm}[1]{\|#1\|}
+\title{When Marginal Calibration Scrambles Ranks:\\
+Weak-Order KL Calibration for Multiclass Probabilities\thanks{Software and replication materials: \url{https://github.com/finite-sample/rank-preserving-calibration} (v0.12.0).}}
 
-% Title and authors
-\title{\scshape Rank-Preserving Calibration for Multiclass Classification}
-
-\author{
-Gaurav Sood
-}
-
+\author{Gaurav Sood}
 \date{}
 
 \begin{document}
@@ -35,205 +23,325 @@ Gaurav Sood
 \maketitle
 
 \begin{abstract}
-Post-hoc calibration for multiclass classifiers faces two competing goals: match known class totals (label marginals) and preserve the within-class ranking of instances induced by the original model. Classical prior-correction methods and per-class logit shifts match totals but can scramble rankings via instance-specific softmax renormalization; popular multiclass calibrators (temperature, matrix/vector scaling, Dirichlet) reduce calibration error but do not enforce rank preservation. We formulate calibration as Euclidean projection onto the intersection of a row-simplex set and a columnwise isotonic-plus-sum set, where isotonic order within each class is defined by the model's pre-calibration scores. We provide a Dykstra alternating-projection solver and an ADMM splitting; the column subproblem admits an exact one-pass PAV solution followed by a scalar shift to satisfy the column sum constraint. Nearly-isotonic variants trade small, controlled rank violations for calibration gains. Experiments on neural and tabular benchmarks show that the method matches target totals while preserving within-class orderings and maintaining competitive ECE/Brier scores. Our Python implementation is open source.\footnote{\url{https://github.com/finite-sample/rank_preserving_calibration}}
+Matching predicted class probabilities to known population totals is routine in survey post-calibration and shifted-domain deployment. For binary outcomes, the standard intercept shift (logit correction) is strictly monotone and preserves every individual's relative rank. For three or more classes, however, multinomial intercept correction---equivalently Iterative Proportional Fitting (IPF)---depends on an instance-specific normalizing denominator and can reverse within-class rankings \citep{mitchell2025}. We formalize when those reversals occur, prove that IPF preserves every pairwise odds ratio and is Bayes-optimal under pure label shift---making exact Bayes optimality, exact marginal matching, and within-class rank preservation mutually incompatible---and formulate exact weak-order Kullback--Leibler (KL) calibration on the transportation polytope. Using monotone block-boundary variables, our conic formulation handles tied discrete scores without arbitrary tie-breaking, reducing KL divergence by \TieKlDropPct\% over row-order tie constraints while explaining why KL geometry succeeds where Euclidean Dykstra projection fails (\RealKlSoftConvPct\%--\RealTempKlSoftConvPct\% versus \RealEucConvPct\% solver convergence). Across an exact-posterior synthetic study and \NumTotalRealRuns{} real-data runs spanning \NumDatasets{} multiclass datasets ($J=3$ to $10$, including a US Census CPS subpopulation shift), \NumModels{} model families, and two shift regimes, strict weak-order preservation carries a real Brier cost under pure label shift (\LabKlWeakDBrier{}$\times 10^{-3}$ versus IPF), whereas soft KL calibration ($\lambda=\SoftLam$) recovers most rank inversions at negligible cost (\LabKlSoftDBrier{}$\times 10^{-3}$). Under covariate shift and overconfident nonlinear models, soft KL calibration and anchor-reference-decoupled temperature-plus-KL calibration simultaneously improve held-out Brier score (\CovKlSoftDBrier{} and \CovTempKlSoftDBrier{}$\times 10^{-3}$ over IPF) and preserve within-class rankings while matching target totals exactly.
 \end{abstract}
 
 \section{Introduction}
 
-Calibration of probabilistic classifiers is essential for decision-making where predicted probabilities should reflect empirical frequencies. In many applications, from health to finance to survey weighting, practitioners must both adjust predictions to match known class totals and maintain the model's within-class discrimination, the relative ordering of instances within each class.
+In survey statistics, ecological inference, and shifted-domain classification, a practitioner often holds individual-level predicted class probabilities $P \in \mathbb{R}_+^{N \times J}$ alongside known aggregate class totals $T \in \mathbb{R}_+^J$ with $\sum_{j=1}^J T_j = N$. Examples include calibrating multilevel regression and poststratification (MRP) vote-share predictions for multi-candidate elections to official turnout totals, adjusting predicted demographic probabilities to Census counts, and adapting a deployed classifier to a target population with different class prevalence \citep{saerens2002,lipton2018}.
 
-In the multiclass setting ($J \ge 3$), naive per-class logit shifts (or label-prior corrections) can change instance orderings within a class because the softmax renormalization term varies by instance. Standard multiclass calibrators such as temperature scaling \citep{guo2017} and Dirichlet calibration \citep{kull2019} improve calibration but do not guarantee order preservation. Label-shift and prior-correction methods \citep{saerens2002,lipton2018} match marginals but can induce the same ranking problem.
+When the outcome is binary ($J=2$), matching the aggregate total by a constant intercept shift on the log-odds scale, $Q_{i1} = \operatorname{logistic}(\operatorname{logit}(P_{i1}) + \delta)$, is strictly increasing in $P_{i1}$. It simultaneously matches the target total, minimizes Kullback--Leibler (KL) divergence from $P$, yields the exact Bayes posterior under pure label shift, and preserves the exact ranking of all $N$ units.
 
-\subsection{The Rank-Scrambling Problem}
-Given original probabilities $p_{ij}$ and per-class multiplicative weights $w_j$, the adjusted probabilities
-\[
-q_{ij} \;=\; \frac{w_j p_{ij}}{\sum_{k=1}^J w_k p_{ik}}
-\]
-depend on the instance-specific denominator. Hence $p_{i_1 j} > p_{i_2 j}$ need not imply $q_{i_1 j} > q_{i_2 j}$.
-
-\paragraph{Worked example (3 classes, two instances).}
-\[
-p_{1,\cdot}=(0.51,\,0.48,\,0.01),\quad p_{2,\cdot}=(0.49,\,0.02,\,0.49),\quad w=(1,\,100,\,1).
-\]
-Then $q_{11}=0.51/(0.51+48+0.01)\approx 0.0105$ while $q_{21}=0.49/(0.49+2+0.49)\approx 0.1644$, reversing the original class-$1$ order.
-
-\subsection{Our Approach}
-
-We project the original probability matrix onto the intersection of the row-simplex and per-column isotonic-plus-sum sets, where isotonic order is the total preorder induced by the original scores for that class. This formulation guarantees rank preservation and exact total matching by construction. We develop two solvers: a Dykstra alternating-projection method \citep{dykstra1983} and an ADMM splitting. The column projection in both cases is solved exactly by a single PAV pass followed by a scalar shift to match the target column sum. We also provide nearly-isotonic variants with $\epsilon$-slack and hinge-penalty relaxations that allow practitioners to tune the calibration-discrimination tradeoff. Across neural and tabular classifiers, the method matches targets while preserving within-class weak orders and maintaining competitive calibration metrics.
-
-\section{Related Work}
-
-\paragraph{Label/prior shift and matching marginals.}
-When deployment priors differ from training priors, the EM update of \citet{saerens2002} and black-box shift estimation \citep{lipton2018} adjust predicted posteriors to match new class totals without refitting. These methods are effective for marginals but apply instance-specific renormalization that can reverse within-class orderings when $J\!\ge\!3$.
-
-\paragraph{Multiclass calibration.}
-Temperature scaling and class-wise linear maps (vector/matrix scaling) \citep{guo2017} and Dirichlet calibration \citep{kull2019} are widely used but do not enforce within-class ranking constraints. Recent work explores ranking-aware criteria \citep{ma2021metacal} and normalization-aware isotonic approaches for multiclass settings \citep{arad2025}; neither simultaneously enforces rank preservation and matches given class totals.
-
-\section{Problem Formulation}
-
-Let $P \in \R^{N\times J}_+$ be the matrix of predicted probabilities, with rows on the probability simplex. We seek $Q \in \R^{N\times J}_+$ satisfying three constraints: each row sums to one ($\sum_{j=1}^J Q_{ij}=1$ for all $i$, $Q_{ij}\ge 0$); each column sums to its target ($\sum_{i=1}^N Q_{ij}=T_j$); and each column is isotonic in the order defined by the original scores ($Q_{\cdot j}$ is nondecreasing when rows are sorted by $P_{\cdot j}$, with ties respected). We solve the projection
+As \citet{mitchell2025} observed, that harmony breaks down as soon as $J \ge 3$. The multinomial intercept shift---solved by Iterative Proportional Fitting (IPF) or Sinkhorn scaling \citep{deming1940,sinkhorn1967,ireland1968}---updates each row via
 \begin{equation}
-\min_{Q} \;\frac{1}{2}\norm{Q-P}_F^2 \quad \text{s.t.}\quad Q \in S_{\text{row}} \cap I_{\text{cols}}.
-\label{eq:main_problem}
+Q_{ij} = \frac{b_j P_{ij}}{\sum_{k=1}^J b_k P_{ik}},
+\label{eq:ipf}
 \end{equation}
-
-The intersection is nonempty whenever $\sum_{j=1}^J T_j=N$ and $0\le T_j\le N$ for all $j$: the constant-column matrix $Q_{ij}=T_j/N$ lies on the row simplex, matches the column totals, and is isotone (constant) in each column.
-
-\section{Algorithms}
-
-\subsection{Dykstra's Alternating Projection Algorithm}
-
-\begin{algorithm}
-\caption{Dykstra's method for rank-preserving calibration}
-\label{alg:dykstra}
-\begin{algorithmic}[1]
-\REQUIRE $P \in \R^{N \times J}$, targets $T \in \R^J$, tolerance $\varepsilon$, $\text{max\_iters}$
-\STATE Initialize: $Q^{(0)} = P$, $U^{(0)} = 0$, $V^{(0)} = 0$
-\FOR{$k = 1$ to $\text{max\_iters}$}
-    \STATE $Y^{(k)} = Q^{(k-1)} + U^{(k-1)}$ \hfill (add correction)
-    \STATE $Z^{(k)} = \Pi_{\text{row}}(Y^{(k)})$ \hfill (project each row onto the simplex)
-    \STATE $U^{(k)} = Y^{(k)} - Z^{(k)}$ \hfill (update correction)
-    \STATE $W^{(k)} = Z^{(k)} + V^{(k-1)}$ \hfill (add correction)
-    \STATE $Q^{(k)} = \Pi_{\text{iso,sum}}(W^{(k)}, T)$ \hfill (per-column isotone + fixed sum)
-    \STATE $V^{(k)} = W^{(k)} - Q^{(k)}$ \hfill (update correction)
-    \IF{$\norm{Q^{(k)} - Q^{(k-1)}}_F / \max(1,\norm{Q^{(k-1)}}_F) < \varepsilon$}
-        \STATE \textbf{break}
-    \ENDIF
-\ENDFOR
-\RETURN $Q^{(k)}$
-\end{algorithmic}
-\end{algorithm}
-
-For the row projection $\Pi_{\text{row}}$, we use a fast probability-simplex projection per row with $O(J\log J)$ time via sorting \citep{duchi2008} or Condat's variant \citep{condat2016}.
-
-\subsection{Exact Column Projection: Isotone + Sum Constraint}
-For each column $j$, let $w \in \R^N$ be the current column vector arranged in the fixed order that sorts $P_{\cdot j}$ once and for all (stable, ties respected). We seek
+where $b_1,\dots,b_J > 0$ are chosen so that $\sum_{i=1}^N Q_{ij} = T_j$. Because the denominator $\sum_k b_k P_{ik}$ varies across rows $i$, two units with $P_{i_1 j} > P_{i_2 j}$ can invert to $Q_{i_1 j} < Q_{i_2 j}$. Consider a concrete three-class example with two units and multipliers $b = (1, 100, 1)$:
 \[
-\min_{x\in\R^N} \tfrac12\|x-w\|_2^2 \quad \text{s.t.}\quad x_1 \le \cdots \le x_N,\;\; \sum_{i=1}^N x_i = T_j.
+P_{1,\cdot} = (0.51,\, 0.48,\, 0.01), \qquad P_{2,\cdot} = (0.49,\, 0.02,\, 0.49).
 \]
+After scaling, $Q_{11} = 0.51 / 48.52 \approx 0.0105$ while $Q_{21} = 0.49 / 3.00 \approx 0.1633$: unit 1 had the higher initial probability for class 1, yet ends up more than fifteen times lower than unit 2.
 
-\begin{algorithm}
-\caption{Column projection $\Pi_{\text{iso,sum}}$ (single PAV + scalar shift)}
-\label{alg:colproj}
-\begin{algorithmic}[1]
-\REQUIRE Column $w\in\R^N$ in fixed score order, target sum $T$
-\STATE $y \leftarrow \mathrm{PAV}(w)$
-\STATE $c \leftarrow (T - \sum_i y_i)/N$
-\STATE \textbf{return} $y + c\cdot \mathbf{1}$
-\end{algorithmic}
-\end{algorithm}
+That example immediately raises a substantive question that existing calibration work leaves unanswered: \emph{is this rank reversal a defect to fix, or a feature of Bayes' rule?} Under pure label shift---where class-conditional feature distributions $P(X \mid Y)$ are unchanged and only class priors move---unit 1's large probability on class 2 ($0.48$) means a 100-fold surge in class 2 makes unit 1 almost certainly class 2, legitimately pushing its class-1 probability below unit 2's. In that setting, forcing strict rank preservation fights the Bayes posterior. By contrast, when the base classifier is overconfident, when $P(X \mid Y)$ also shifts across subpopulations (covariate shift), or when institutional rules prohibit post-hoc marginal calibration from demoting higher-scoring units within a class (e.g., triage queues, risk scoring, or fairness-constrained prioritization), wild denominator-driven inversions are harmful.
 
-\begin{lemma}[Isotonic projection with sum constraint]
-\label{lem:iso_sum}
-Let $C = \{x \in \mathbb{R}^N : x_1 \le \cdots \le x_N\}$ be the isotone cone and $H = \{x : \mathbf{1}^\top x = T\}$ be the sum-constraint hyperplane. If $y = \Pi_C(w)$ denotes the isotonic projection of $w$, then
+Prior work on multiclass post-hoc calibration addresses different targets. Temperature scaling \citep{guo2017}, Dirichlet calibration \citep{kull2019}, Meta-Cal \citep{ma2021metacal}, and intra-order-preserving neural maps \citep{rahimi2020} optimize held-out proper scores or preserve \emph{within-instance} top-$k$ class orderings ($P_{i j_1} \le P_{i j_2} \implies Q_{i j_1} \le Q_{i j_2}$). None simultaneously enforces exact \emph{column marginal totals} $\sum_i Q_{ij} = T_j$ and \emph{within-class across-instance} ordering ($P_{i_1 j} < P_{i_2 j} \implies Q_{i_1 j} \le Q_{i_2 j}$). Conversely, label-shift estimators \citep{saerens2002,lipton2018} match marginals via~\eqref{eq:ipf} without controlling within-class reversals.
+
+This paper makes four contributions:
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+\item \textbf{Formalizing the tradeoff:} We characterize exactly when IPF reverses within-class ranks, prove that IPF preserves all pairwise odds ratios, and establish the three-way impossibility among exact Bayes optimality under pure label shift, exact marginal matching, and strict within-class rank preservation for $J \ge 3$ (Proposition~1).
+\item \textbf{Exact weak-order KL conic formulation:} We replace arbitrary row-order tie constraints with monotone block-boundary variables (Proposition~2), derive the Bregman KKT conditions showing why KL geometry stays multiplicative on the open simplex while Euclidean projection clips probabilities and stalls (Proposition~3), and formulate the soft $\lambda$-Pareto frontier with anchor-reference decoupling (Proposition~4).
+\item \textbf{Broad, honest empirical evidence:} Across an exact-posterior synthetic study (\NumSynthSeeds{} seeds) and \NumTotalRealRuns{} real-data runs spanning \NumDatasets{} datasets ($J=3$ to $10$, including a US Census CPS subpopulation shift), \NumModels{} model families, and both pure label shift and covariate shift, we compare against true IPF, temperature scaling plus IPF, and Euclidean projection.
+\item \textbf{Open-source software:} All exact conic solvers (\texttt{ties="weak"} default), diagnostics, and replication scripts are implemented and tested in \texttt{rank-preserving-calibration} v0.12.0.
+\end{enumerate}
+
+\section{When Marginal Calibration Reverses Ranks}
+
+Let $P \in (0,1)^{N \times J}$ be a matrix of predicted probabilities whose rows lie on the probability simplex $\Delta^{J-1} = \{q \in \mathbb{R}_+^J : \sum_{j=1}^J q_j = 1\}$, and let $T \in \mathbb{R}_{++}^J$ be target column totals with $\sum_{j=1}^J T_j = N$. Define the transportation polytope
 \[
-\Pi_{C \cap H}(w) = y + \frac{T - \mathbf{1}^\top y}{N} \mathbf{1}.
+\mathcal{C}(T) = \left\{ Q \in \mathbb{R}_+^{N \times J} : Q\mathbf{1}_J = \mathbf{1}_N,\; Q^\top \mathbf{1}_N = T \right\}.
 \]
-\end{lemma}
+The classical minimum-KL marginal adjustment solves $\min_{Q \in \mathcal{C}(T)} \operatorname{KL}(Q \| P)$, where $\operatorname{KL}(Q \| P) = \sum_{i,j} Q_{ij} \log(Q_{ij}/P_{ij})$. By strict convexity, this problem has a unique solution of the multiplicative form~\eqref{eq:ipf}, which IPF (Sinkhorn scaling) computes \citep{ireland1968}.
 
-\begin{proof}
-The isotone cone $C$ is translation-invariant along $\mathbf{1}$: for any $\lambda \in \R$, $x \in C$ if and only if $x + \lambda \mathbf{1} \in C$, so $\Pi_C(w - \lambda \mathbf{1}) = \Pi_C(w) - \lambda \mathbf{1}$. The Lagrangian for the sum-constrained projection
+Within class $j$, we say $Q$ preserves the \emph{weak order} of an anchor matrix $A \in \mathbb{R}^{N \times J}$ (default $A = P$) if
+\begin{equation}
+A_{i_1 j} < A_{i_2 j} \;\Longrightarrow\; Q_{i_1 j} \le Q_{i_2 j}
+\qquad \text{for all } i_1, i_2 \in \{1,\dots,N\},\; j \in \{1,\dots,J\}.
+\label{eq:weak_order}
+\end{equation}
+Tied anchor scores ($A_{i_1 j} = A_{i_2 j}$) impose no relative constraint between $Q_{i_1 j}$ and $Q_{i_2 j}$. Notice the distinction from \citet{rahimi2020}, who constrain the ordering \emph{across classes within a row} ($j_1$ vs.\ $j_2$ for fixed $i$); here we constrain the ordering \emph{across units within a column} ($i_1$ vs.\ $i_2$ for fixed $j$).
+
+\begin{proposition}[IPF Rank Reversals, Odds-Ratio Invariance, and Pure-Label-Shift Impossibility]
+\label{prop:ipf}
+Let $Q^{\mathrm{IPF}} \in \mathcal{C}(T)$ be the unique solution to~\eqref{eq:ipf} with positive multipliers $b_1,\dots,b_J > 0$.
+\begin{enumerate}[label=(\alph*),leftmargin=*,itemsep=2pt]
+\item \textbf{Binary preservation:} If $J=2$, $Q^{\mathrm{IPF}}$ preserves the strict within-class ordering of $P$ in every column.
+\item \textbf{Pairwise odds-ratio invariance:} For any $J \ge 2$ and any pair of classes $j, k$,
 \[
-\min_{x \in C} \frac{1}{2}\|x - w\|_2^2 \quad \text{s.t.}\quad \mathbf{1}^\top x = T
+\frac{P_{i_1 j}}{P_{i_1 k}} < \frac{P_{i_2 j}}{P_{i_2 k}}
+\;\Longleftrightarrow\;
+\frac{Q^{\mathrm{IPF}}_{i_1 j}}{Q^{\mathrm{IPF}}_{i_1 k}} < \frac{Q^{\mathrm{IPF}}_{i_2 j}}{Q^{\mathrm{IPF}}_{i_2 k}}.
 \]
-introduces a single scalar multiplier $\mu$. The optimality conditions yield $x^\star = y + \mu \mathbf{1}$ where $y = \Pi_C(w)$. The constraint $\mathbf{1}^\top x^\star = T$ gives $\mu = (T - \mathbf{1}^\top y)/N$.
-\end{proof}
-
-Nonnegativity is not enforced in this subproblem; it is handled by the subsequent row-simplex projection.
-
-\paragraph{Complexity.}
-Per Dykstra iteration: row projections cost $O(NJ\log J)$; column projections are $O(NJ)$ given pre-sorted order. The orders per column are computed once upfront in $O(JN\log N)$.
-
-\subsection{ADMM Formulation}
-Introduce $Q=R=S$, with $R\in S_{\text{row}}$ and $S\in I_{\text{cols}}$:
+\item \textbf{Exact reversal condition ($J \ge 3$):} A pair with $P_{i_1 j} > P_{i_2 j}$ inverts to $Q^{\mathrm{IPF}}_{i_1 j} < Q^{\mathrm{IPF}}_{i_2 j}$ if and only if
 \[
-\min_{Q,R,S}\;\frac{1}{2}\norm{Q-P}_F^2\quad\text{s.t.}\;R\in S_{\text{row}},\;S\in I_{\text{cols}},\;Q=R=S.
+\frac{\sum_{k=1}^J b_k P_{i_1 k}}{\sum_{k=1}^J b_k P_{i_2 k}} > \frac{P_{i_1 j}}{P_{i_2 j}},
 \]
-Standard ADMM updates apply \citep{boyd2011}. The $R$-update is the row-simplex projection; the $S$-update is Algorithm~\ref{alg:colproj}. Warm-starts reuse PAV block structure and previous shifts.
+which requires at least one third class $k \ne j$ with $b_k \ne b_j$ and $P_{i_1 k} \ne P_{i_2 k}$.
+\item \textbf{Impossibility under pure label shift:} When $P_{ij} = P_{\mathrm{src}}(Y=j \mid X_i)$ is the exact source Bayes posterior and the target domain differs only by class priors ($P_{\mathrm{tgt}}(X \mid Y) = P_{\mathrm{src}}(X \mid Y)$) with $T_j = \sum_i P_{\mathrm{tgt}}(Y=j \mid X_i)$, $Q^{\mathrm{IPF}}$ equals the exact target Bayes posterior. Consequently, for $J \ge 3$, exact Bayes optimality under pure label shift, exact marginal matching, and strict within-class weak-order preservation~\eqref{eq:weak_order} are mutually incompatible whenever condition~(c) holds.
+\end{enumerate}
+\end{proposition}
 
-\section{Nearly Isotonic Variants}
+The proof is in Appendix~\ref{app:proofs}. Proposition~\ref{prop:ipf} clarifies the entire conceptual debate. IPF does not scramble pairwise comparisons between two specific classes: the odds of class $j$ versus class $k$ remain strictly ordered across all units. Reversals enter solely through third-class denominator shifts. When pure label shift holds and $P$ is already calibrated, those denominator shifts are Bayes-optimal, so strict rank preservation must sacrifice posterior accuracy. When $P$ is overconfident or when $P(X \mid Y)$ shifts across domains, however, extreme entries in $P$ interact with large multipliers $b_k$ to amplify denominator swings—creating both severe rank reversals and inflated probability error.
 
-\paragraph{Epsilon-slack constraints.}
-Replace $x_{i+1}\ge x_i$ with $x_{i+1}\ge x_i-\epsilon$. Let $\tilde x_i = x_i + i\epsilon$. Then $\tilde x$ is standard isotone, and the sum constraint becomes $\sum_i \tilde x_i = T + \epsilon\sum_i i$. Apply Algorithm~\ref{alg:colproj} to $\tilde w$ with target $\tilde T$, then recover $x_i=\tilde x_i - i\epsilon$.
+\section{Exact Weak-Order KL Calibration}
 
-\paragraph{Hinge-penalty approach.}
-Add $\lambda\sum_i \max(0, x_i - x_{i+1})$ to the objective. The proximal step can be implemented via splitting: a standard isotonic projection substep plus a shrinkage on violations. We provide a practical solver in the package documentation.
+To enforce or regularize~\eqref{eq:weak_order} on the transportation polytope $\mathcal{C}(T)$, we solve a convex Bregman projection onto $\mathcal{C}(T)$ subject to exact weak-order constraints. Two design choices turn out to be decisive: how tied anchor scores are represented, and whether the divergence is KL or Euclidean.
 
-\subsection{The Fundamental Tradeoff}
-\label{sec:tradeoff}
+\subsection{Exact Weak-Order Constraints via Block Boundaries}
 
-Without rank constraints, the natural KL-divergence projection onto the row-simplex constraint with exact column totals has the closed-form solution
+A naive way to enforce isotonicity in column $j$ is to sort $A_{\cdot j}$ stably (breaking ties by row index) into a permutation $\pi_j$ and require $Q_{\pi_j(1),j} \le \cdots \le Q_{\pi_j(N),j}$. When scores are continuous and distinct, this is exact. On real classifiers such as random forests, bagged trees, or rounded survey probabilities, however, hundreds of rows share identical scores. Stable sorting then imposes hundreds of arbitrary inequalities between tied rows, making the solution depend on row ordering, inflating divergence, and triggering numerical failures when a solver struggles with redundant active faces.
+
+Instead, partition $\{1,\dots,N\}$ in column $j$ into $K_j$ strictly ordered tie blocks $B_{j,1} \prec \cdots \prec B_{j,K_j}$, so that $i, i' \in B_{j,k} \iff A_{ij} = A_{i'j}$ and $i \in B_{j,k},\, i' \in B_{j,k'}$ with $k < k' \iff A_{ij} < A_{i'j}$.
+
+\begin{proposition}[Exact Weak-Order Block-Boundary Representation]
+\label{prop:ties}
+A matrix $Q \in \mathbb{R}^{N \times J}$ satisfies the weak-order condition~\eqref{eq:weak_order} if and only if for each column $j$ with $K_j \ge 2$ there exist boundary scalars $u_{j,1} \le u_{j,2} \le \cdots \le u_{j,K_j - 1}$ such that
+\begin{equation}
+Q_{ij} \le u_{j,k} \quad (\forall i \in B_{j,k},\; k < K_j),
+\qquad
+u_{j,k-1} \le Q_{ij} \quad (\forall i \in B_{j,k},\; k > 1).
+\label{eq:boundaries}
+\end{equation}
+This representation uses at most $2N + K_j - 2 = O(N)$ linear inequalities per column, is invariant to arbitrary row permutations, and yields a strictly convex feasible set $\mathcal{W}(A) \subseteq \mathbb{R}^{N \times J}$ containing the stable-sort cone $\mathcal{S}(A)$. Consequently, for any strictly convex divergence $D_\phi(\cdot, R)$,
 \[
-q_{ij} = \frac{p_{ij} b_j}{\sum_k p_{ik} b_k},
+\min_{Q \in \mathcal{C}(T) \cap \mathcal{W}(A)} D_\phi(Q, R) \;\le\; \min_{Q \in \mathcal{C}(T) \cap \mathcal{S}(A)} D_\phi(Q, R),
 \]
-where $b_j$ are multiplicative weights chosen to satisfy $\sum_i q_{ij} = T_j$. This is the classical multiplicative reweighting form used in label-shift correction \citep{saerens2002,lipton2018}. As the rank-scrambling example in Section~1.1 demonstrates, this exact reweighting can reverse within-class orderings because the instance-specific denominator $\sum_k p_{ik} b_k$ varies by instance, and in multiclass settings this variation can overwhelm the numerator's ordering.
+with strict inequality whenever any arbitrary intra-tie constraint is active at the stable-sort optimum. Moreover, $\mathcal{C}(T) \cap \mathcal{W}(A)$ is always nonempty since the constant-column matrix $Q_{ij} = T_j/N$ is feasible.
+\end{proposition}
 
-One cannot in general simultaneously achieve the KL-optimal adjustment matching target priors, exact column-sum matching, and exact rank preservation. Our strict Euclidean projection \eqref{eq:main_problem} sacrifices KL-optimality to guarantee total matching and rank preservation. The nearly-isotonic variants allow controlled rank violations to move closer to the KL-optimal solution when small violations are acceptable. We quantify this tradeoff empirically below.
+\subsection{Bregman KKT Geometry: Why KL Succeeds Where Euclidean Fails}
 
-\section{Theoretical Notes}
+Let $D_\phi(Q, R) = \sum_{i,j} [\phi(Q_{ij}) - \phi(R_{ij}) - \phi'(R_{ij})(Q_{ij} - R_{ij})]$ be the separable Bregman divergence generated by a strictly convex function $\phi$, and consider the soft-penalized calibration problem
+\begin{equation}
+\min_{Q \in \mathcal{C}(T),\; u,\; v \ge 0} \; D_\phi(Q, R) + \lambda \sum_{r} v_r,
+\label{eq:soft}
+\end{equation}
+where $v_r \ge 0$ are hinge slacks relaxing the weak-order inequalities~\eqref{eq:boundaries} (or adjacent inequalities when $K_j = N$) and $\lambda \ge 0$ controls the penalty weight.
 
-\paragraph{Convergence.}
-For closed convex sets, Dykstra's method converges to the Euclidean projection onto the intersection \citep{bauschke1994}. Rates depend on geometry: polyhedral regularity can yield linear or finite convergence in special cases. We report iteration counts and primal residuals in experiments. ADMM convergence is standard for strongly convex objectives with closed convex constraints \citep{boyd2011,tibshirani2017}.
+\begin{proposition}[Bregman KKT Structure]
+\label{prop:bregman}
+At any interior optimum $Q^\star$ of~\eqref{eq:soft}, there exist row multipliers $\nu_i$, column multipliers $\mu_j$, and rank-constraint multipliers $\gamma_{ij}$ (bounded in magnitude by $\lambda$ per active inequality) such that
+\[
+\phi'(Q^\star_{ij}) = \phi'(R_{ij}) - \nu_i - \mu_j - \gamma_{ij}.
+\]
+In particular:
+\begin{enumerate}[label=(\alph*),leftmargin=*,itemsep=2pt]
+\item \textbf{KL divergence} ($\phi(x) = x\log x - x$, $\phi'(x) = \log x$):
+\[
+Q^\star_{ij} = R_{ij}\exp(-\nu_i - \mu_j - \gamma_{ij}).
+\]
+Updates are multiplicative, remain strictly positive whenever $R_{ij} > 0$, preserve zeros ($R_{ij}=0 \implies Q^\star_{ij}=0$), and recover IPF~\eqref{eq:ipf} exactly at $\lambda = 0$ (where $\gamma_{ij} = 0$).
+\item \textbf{Euclidean distance} ($\phi(x) = \tfrac{1}{2}x^2$, $\phi'(x) = x$):
+\[
+Q^\star_{ij} = \max\!\left(0,\; R_{ij} - \nu_i - \mu_j - \gamma_{ij}\right).
+\]
+Updates are additive and clip small probabilities onto the simplex boundary, distorting log-odds and creating slow alternating-projection convergence under Dykstra's method \citep{dykstra1983,bauschke1994}.
+\end{enumerate}
+\end{proposition}
 
-\paragraph{Rank preservation.}
-Because column isotonicity is enforced in the fixed order induced by $P_{\cdot j}$ with stable ties, the calibrated $Q_{\cdot j}$ preserves the original weak order (ties may remain ties).
+\subsection{Soft \texorpdfstring{$\lambda$}{lambda}-Pareto Frontier and Anchor-Reference Decoupling}
 
-\section{KL-Divergence Calibration}
+Problem~\eqref{eq:soft} with $\phi(x) = x\log x - x$ separates two roles that need not use the same matrix: the \emph{KL reference} $R$ from which divergence is measured, and the \emph{ranking anchor} $A$ whose weak order is preserved. When a source validation split is available, one can temperature-scale $P$ to obtain $R = P_{\mathrm{temp}}$ (removing source overconfidence) while keeping $A = P$ as the anchor whose original rankings are respected.
 
-The preceding sections focused on Euclidean projection. We now develop a unified Bregman framework that encompasses both Euclidean and KL-divergence calibration, connecting to classical matrix scaling and IPF.
+\begin{proposition}[Exact Conic Solve and Pareto Monotonicity]
+\label{prop:pareto}
+For any $R \in \mathbb{R}_+^{N \times J}$, anchor $A$, targets $T$, and $\lambda \ge 0$, problem~\eqref{eq:soft} under KL divergence is an exponential-cone program with $O(NJ)$ variables and cones. Letting $Q^\star(\lambda)$ denote its unique minimizer and $V_A(Q) = \min_{u,v \ge 0} \sum_r v_r$ the optimal hinge violation:
+\begin{enumerate}[label=(\alph*),leftmargin=*,itemsep=2pt]
+\item $V_A(Q^\star(\lambda))$ is non-increasing in $\lambda$ and $\operatorname{KL}(Q^\star(\lambda) \| R)$ is non-decreasing in $\lambda$.
+\item $\lambda = 0$ recovers IPF applied to $R$, and $\lambda \to \infty$ (or solving~\eqref{eq:boundaries} directly with $v \equiv 0$) yields the exact strict weak-order KL projection.
+\end{enumerate}
+\end{proposition}
 
-\input{kl_theory}
+In \texttt{rank-preserving-calibration} v0.12.0, both the direct strict weak-order problem ($v \equiv 0$) and the soft problem~\eqref{eq:soft} are solved to interior-point accuracy via Clarabel \citep{goulart2024clarabel}, avoiding the stalling of alternating Bregman projections \citep{bauschke2000} and Euclidean Dykstra \citep{dykstra1983,duchi2008,condat2016}. Appendix~\ref{app:proofs} gives the sparse conic matrix construction.
 
-\section{Computational Considerations}
+\section{Evidence}
 
-Three implementation choices are worth noting. First, for each class $j$ we compute and cache the permutation that sorts $P_{\cdot j}$ once; all subsequent iterates reuse this order. Second, for the row projection we use the $O(J\log J)$ sorter-based simplex projection \citep{duchi2008}, though Condat's variant \citep{condat2016} is a drop-in alternative with strong empirical performance. Third, both Dykstra and ADMM benefit from warm starts that reuse PAV block structure and previous scalar shifts.
+We test the theory and solvers across three empirical studies: (1) an exact-posterior synthetic benchmark where ground-truth target probabilities are known in closed form, (2) a broad real-data benchmark spanning \NumDatasets{} datasets, \NumModels{} model families, and two shift regimes (\NumTotalRealRuns{} total runs), and (3) a focused survey-style subpopulation calibration study on US Census Current Population Survey (CPS) data. All tables, figures, and inline statistics are generated directly from committed benchmark outputs.
 
-\section{Experiments}
+\subsection{Exact-Posterior Synthetic Benchmark}
 
-We evaluate the method on two complementary benchmarks: a synthetic test where the ground-truth target posterior is known exactly, and real-data experiments with shifted class distributions. We report Brier score, ECE (top-label), accuracy, rank-preservation rate (fraction of within-class pairs whose order is unchanged), and column-total deviation $\max_j|\sum_i Q_{ij}-T_j|$ to verify constraint satisfaction.
+We simulate $N = 250$ observations from a three-class bivariate Gaussian mixture over \NumSynthSeeds{} seeds, shifting class priors from $(0.45, 0.35, 0.20)$ to $(0.15, 0.60, 0.25)$. Because class-conditional densities are known, we compute the exact target Bayes posterior $P_{\mathrm{true}}$ and compare three regimes: (i) \emph{pure label shift} with the exact calibrated source posterior $P_{\mathrm{src}}$ as input, (ii) \emph{overconfident label shift} where the input is sharpened to $P_{\mathrm{in}} \propto P_{\mathrm{src}}^{2.5}$ (mimicking overconfident neural networks and boosted trees), and (iii) \emph{covariate shift} where target class means also translate. We also round inputs to multiples of $0.05$ to measure the tie-handling gain of Proposition~\ref{prop:ties}.
 
-\subsection{Synthetic Test}
-\label{sec:synthetic}
+\begin{table}[htbp]
+\centering\scriptsize\setlength{\tabcolsep}{3.5pt}
+\caption{Exact-posterior synthetic benchmark (3-class Gaussian mixture, $N=250$, \NumSynthSeeds{} seeds). Target totals equal exact expected target counts. Euclidean RPC (Dykstra, 1,500 iterations) achieved 0\% convergence (``--''); KL soft uses $\lambda=\SoftLam$.}
+\label{tab:synthetic}
+\input{generated/synthetic_table.tex}
+\end{table}
 
-We construct a 3-class Gaussian mixture where the base model outputs the exact source posterior. The target domain differs only by class priors, so classical logit-shift yields the exact target posterior. This setup directly tests the fundamental tradeoff from Section~\ref{sec:tradeoff}: logit-shift is KL-optimal but may scramble ranks; our method preserves ranks but deviates from the KL-optimal posterior.
-
-\input{experiments/output/synthetic_table}
-
-Figure~\ref{fig:synthetic} shows the tradeoff frontier. Logit-shift achieves near-zero RMSE to the true target posterior but breaks ranks. Strict RPC preserves ranks exactly but deviates from the optimal posterior. The $\epsilon$-slack variants interpolate smoothly between the two.
-
-\begin{figure}[t]
+\begin{figure}[htbp]
 \centering
-\includegraphics[width=0.8\textwidth]{experiments/output/synthetic_tradeoff.pdf}
-\caption{Synthetic tradeoff: RMSE to true target posterior vs.\ rank preservation rate. Logit-shift achieves near-zero RMSE but scrambles ranks; strict RPC preserves ranks exactly but deviates from the true posterior; $\epsilon$-slack variants interpolate.}
+\includegraphics[width=\linewidth]{fig_synthetic_pareto.pdf}
+\caption{Synthetic $\lambda$-path (means over 10 seeds) as the rank penalty $\lambda$ moves from $0$ (IPF) to $\infty$ (strict weak-order KL). Top row: RMSE to the exact target Bayes posterior (dashed line marks unadjusted probabilities). Bottom row: maximum weak-order rank violation. Under calibrated pure label shift (left), IPF is exact and raising $\lambda$ trades off accuracy. Under overconfidence (middle) and covariate shift (right), raising $\lambda$ reduces both posterior error and rank violations.}
 \label{fig:synthetic}
 \end{figure}
 
-\subsection{Real-Data Shifted Deployment}
-\label{sec:realdata}
+Table~\ref{tab:synthetic} and Figure~\ref{fig:synthetic} verify every part of Propositions~\ref{prop:ipf}--\ref{prop:pareto}. Under calibrated pure label shift, IPF achieves exact zero RMSE to truth (\SynPureIpfRmse{}) with \SynPureIpfRank{}\% rank preservation; strict weak-order KL raises rank preservation to \SynPureKlWeakRank{}\% at an RMSE cost of \SynPureKlWeakRmse{}, while soft KL ($\lambda=\SoftLam$) stays much closer (\SynPureKlSoftRmse{}). Once the pure-label-shift ideal breaks, the frontier flips. Under an overconfident source model, strict weak-order KL cuts RMSE to the true posterior below IPF (\SynOverKlWeakRmse{} versus \SynOverIpfRmse{}) and Brier score from \SynOverIpfBrier{} to \SynOverKlWeakBrier{} with zero rank violation. Under covariate shift, strict weak-order KL cuts posterior RMSE in half (\SynCovKlWeakRmse{} versus \SynCovIpfRmse{}) and soft KL achieves \SynCovKlSoftRmse{}. On the quantized tied inputs, exact weak-order block boundaries (\texttt{ties="weak"}) reduce KL divergence by an average of \TieKlDropPct\% relative to row-order tie constraints (\texttt{ties="stable"}). Meanwhile, Euclidean Dykstra failed to converge in 100\% of runs at $N=250$.
 
-We train 300-tree random forests \citep{pedregosa2011} on UCI \texttt{digits} and \texttt{wine} datasets, then create shifted holdout sets by resampling with altered class composition. We use exact target counts as $T$ and average over 5 random seeds.
+\subsection{Broad Real-Data Benchmark Across Six Datasets and Four Model Families}
 
-\input{experiments/output/real_data_table}
+To test whether these patterns hold outside synthetic mixtures, we evaluate \NumDatasets{} real multiclass datasets spanning $J=3$ to $10$ classes and diverse domains: Wine ($J=3$, chemistry), California Housing price quartiles ($J=4$, tabular; natural South-to-North California covariate shift), US Census CPS marital status ($J=4$, socioeconomic survey; natural Male-to-Female subpopulation shift), 20 Newsgroups political and religious discussion ($J=4$, TF-IDF + SVD text; short-to-long post shift), Forest Cover Type ($J=7$, ecological; near-to-far roadway shift), and Handwritten Digits ($J=10$, image features with heavy discrete ties; PC1 shift).
 
-Figure~\ref{fig:real} shows the Brier-rank tradeoff across methods. Original probabilities preserve ranks by construction but fail to match target totals. Logit-shift achieves the best Brier score but breaks ranks and falls short of exact total matching (column error $>0$). RPC methods achieve exact total matching (column error $=0$), with RPC-strict additionally preserving ranks exactly where it converges.
+On each dataset we train \NumModels{} classifiers with distinct calibration profiles---logistic regression (\texttt{LogReg}, roughly calibrated), random forests (\texttt{RF}, underconfident with heavy score ties), histogram gradient boosting (\texttt{HGB}, overconfident), and a two-layer neural network (\texttt{MLP}, strongly overconfident)---reserving 25\% of source training data to fit a scalar temperature parameter $\tau$ for temperature-scaled baselines. We evaluate two regimes over \NumRealSeeds{} random seeds each: \emph{pure label shift} (Dirichlet-shifted test class priors) and \emph{covariate / subpopulation shift} (natural domain splits where $P(X \mid Y)$ also changes). We compare seven methods: unadjusted probabilities (\texttt{Original}), exact Sinkhorn \texttt{IPF}, source temperature scaling followed by IPF (\texttt{Temp + IPF}), Euclidean Dykstra (\texttt{Euclidean RPC}), strict weak-order KL (\texttt{KL weak}), soft weak-order KL (\texttt{KL soft}, $\lambda=\SoftLam$), and anchor-reference-decoupled temperature scaling plus soft KL (\texttt{Temp + KL soft}, $R = P_{\mathrm{temp}}$, $A = P$). Because methods can differ in convergence rate, Table~\ref{tab:real_summary} reports \emph{matched-pair} Brier and NLL improvements over IPF ($\text{IPF} - \text{method}$, multiplied by 1,000, with 95\% paired bootstrap confidence intervals) over runs where both methods converged, eliminating survivorship bias.
 
-\begin{figure}[t]
+\begin{table}[htbp]
+\centering\scriptsize\setlength{\tabcolsep}{2pt}
+\caption{Matched-pair real-data benchmark across \NumDatasets{} datasets, \NumModels{} model families, and \NumRealSeeds{} seeds (\NumTotalRealRuns{} runs). $\Delta$Brier and $\Delta$NLL equal $(\text{IPF} - \text{method}) \times 1{,}000$ on matched converged runs (positive favors the named method), with 95\% paired bootstrap intervals. KL soft uses $\lambda=\SoftLam$.}
+\label{tab:real_summary}
+\input{generated/real_summary_table.tex}
+\end{table}
+
+\begin{figure}[htbp]
 \centering
-\includegraphics[width=0.8\textwidth]{experiments/output/brier_vs_rank.pdf}
-\caption{Real data: Brier score vs.\ rank preservation rate across methods, averaged across both datasets and all seeds.}
-\label{fig:real}
+\includegraphics[width=\linewidth]{fig_real_brier_delta.pdf}
+\caption{Matched-pair Brier improvement over IPF ($\times 1{,}000$; right favors the named method) by shift regime (rows) and model family (columns), with 95\% paired bootstrap confidence intervals over datasets and seeds. Euclidean RPC points reflect only the \RealEucConvPct\% of runs where Dykstra converged.}
+\label{fig:real_brier}
 \end{figure}
 
-\section{Discussion and Limitations}
+Table~\ref{tab:real_summary} and Figure~\ref{fig:real_brier} establish four empirical conclusions:
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+\item \textbf{KL geometry solves the convergence problem that breaks Euclidean projection.} Across all \NumTotalRealRuns{} real runs, Euclidean Dykstra converged on only \RealEucConvPct\% of problems (\DigitsEucConvPct\% on 10-class Digits). Exact weak-order KL converged on \RealKlWeakConvPct\%, soft KL on \RealKlSoftConvPct\%, and \texttt{Temp + KL soft} on \RealTempKlSoftConvPct\% (\DigitsKlSoftConvPct\% on Digits), matching exact column totals ($<0.01$ error).
+\item \textbf{Pure label shift confirms the theoretical tradeoff.} Strict weak-order KL enforces \LabKlWeakRank{}\% rank preservation (zero violations) at a real matched-pair Brier penalty of \LabKlWeakDBrier{}$\times 10^{-3}$ (95\% CI [\LabKlWeakDBrierLo{}, \LabKlWeakDBrierHi{}]) versus IPF. Soft KL ($\lambda=\SoftLam$) nearly eliminates that cost (\LabKlSoftDBrier{}$\times 10^{-3}$, CI [\LabKlSoftDBrierLo{}, \LabKlSoftDBrierHi{}]; $\Delta\text{NLL} = \LabKlSoftDNll{}\times 10^{-3}$) while lifting rank preservation by \LabKlSoftDRank{} percentage points (\LabIpfRank{}\% to \LabKlSoftRank{}\%) and preserving macro one-vs-rest AUROC (\LabKlSoftAuroc{} versus \LabIpfAuroc{}).
+\item \textbf{Temperature scaling before IPF worsens rank reversals, whereas decoupling fixes both.} \texttt{Temp + IPF} improves Brier (\LabTempIpfDBrier{} under label shift; \CovTempIpfDBrier{} under covariate shift) but \emph{reduces} rank preservation below plain IPF (\LabTempIpfDRank{} and \CovTempIpfDRank{} percentage points). Using temperature-scaled probabilities as the KL reference while anchoring ranks to $P$ (\texttt{Temp + KL soft}) reverses that loss, gaining \CovTempKlSoftDRank{} percentage points over IPF under covariate shift (a 3.8-point swing over \texttt{Temp + IPF}) while achieving the \emph{best} matched-pair Brier improvement of any method (\CovTempKlSoftDBrier{}$\times 10^{-3}$, CI [\CovTempKlSoftDBrierLo{}, \CovTempKlSoftDBrierHi{}]).
+\item \textbf{Under covariate shift and overconfident models, rank regularization acts as a free regularizer.} Without any validation split for temperature scaling, \texttt{KL soft} beats IPF on Brier (\CovKlSoftDBrier{}$\times 10^{-3}$, CI [\CovKlSoftDBrierLo{}, \CovKlSoftDBrierHi{}]), NLL (\CovKlSoftDNll{}$\times 10^{-3}$), and rank preservation (\CovKlSoftDRank{} pp) simultaneously. Even strict \texttt{KL weak} improves NLL by \CovKlWeakDNll{}$\times 10^{-3}$ over IPF while achieving zero rank violations. Figure~\ref{fig:real_brier} shows this gain is concentrated in overconfident nonlinear classifiers (\texttt{HGB} and \texttt{MLP}): on those two models under covariate shift, \texttt{Temp + KL soft} improves mean Brier from \CovOverIpfBrier{} (IPF) and \CovOverTempIpfBrier{} (\texttt{Temp + IPF}) down to \CovOverTempKlSoftBrier{}, while raising rank preservation from \CovOverTempIpfRank{}\% to \CovOverTempKlSoftRank{}\%.
+\end{enumerate}
 
-The approach is suitable when relative ordering matters, as in regulatory triage, survey weighting, or fairness-constrained ranking. It is less suitable when the base model has poor discrimination (no meaningful ranks to preserve) or when computational budgets prohibit iterative projections on very large $N$, where stochastic variants may help.
+\subsection{Survey Marginal Calibration: US Census CPS Subpopulation Shift}
 
-The choice between methods depends on the downstream use. When predictions will be used to rank instances within classes, as in prioritization queues or risk rankings, preserving ranks is essential, and strict RPC is appropriate. When small rank violations are acceptable, the $\epsilon$-slack variants offer a smooth tradeoff, with $\epsilon$ tunable against a validation objective (Brier, ECE) or a domain-specific maximum tolerable violation. When the application cares only about expected loss minimization and not about individual instance comparisons, classical multiplicative reweighting (logit-shift) remains the right tool, with the understanding that ranks may not be preserved.
+To examine \citet{mitchell2025}'s survey-statistics motivation directly, we inspect the US Census CPS four-class marital-status task in detail: each classifier is trained on male respondents and calibrated to match known female marginal counts ($N=250$ per batch, \NumRealSeeds{} seeds). Table~\ref{tab:census} reports results by model family, and Figure~\ref{fig:real_pareto} plots the full $\lambda$-Pareto frontier alongside California Housing under covariate versus pure label shift.
 
-\section{Conclusion}
-We presented a projection-based multiclass calibrator that preserves within-class rankings while matching population totals. The method reduces to PAV plus a scalar shift inside Dykstra or ADMM, is efficient in practice, and integrates into existing calibration pipelines.
+\begin{table}[htbp]
+\centering\footnotesize\setlength{\tabcolsep}{4pt}
+\caption{US Census CPS subpopulation shift (Male $\to$ Female, 4-class marital status, \NumRealSeeds{} seeds). Euclidean RPC failed to converge in 100\% of runs (``--''); KL soft uses $\lambda=\SoftLam$.}
+\label{tab:census}
+\input{generated/census_table.tex}
+\end{table}
 
-\bibliographystyle{plainnat}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{fig_real_pareto.pdf}
+\caption{Held-out Brier score versus weak-order rank preservation rate along the KL $\lambda$-path (means over 5 seeds). Open circles mark IPF ($\lambda=0$); filled squares mark strict weak-order KL ($\lambda=\infty$). Under real subpopulation and geographic covariate shifts (left and middle), moderate rank regularization lowers Brier score for nonlinear classifiers (MLP, HGB, RF) while raising rank preservation; under pure label shift (right) and calibrated LogReg, the curve slopes upward as Proposition~\ref{prop:ipf} predicts.}
+\label{fig:real_pareto}
+\end{figure}
+
+The US Census application shows both sides of the story clearly. On a well-calibrated linear model (\texttt{LogReg}), IPF achieves Brier \CenLrIpfBrier{} at \CenLrIpfRank{}\% rank preservation, and soft KL trades a small Brier increment (\CenLrKlSoftBrier{}) to reach \CenLrKlSoftRank{}\% rank preservation. On an overconfident neural network (\texttt{MLP}), IPF suffers Brier \CenMlpIpfBrier{} and NLL \CenMlpIpfNll{} with \CenMlpIpfRank{}\% rank preservation; strict \texttt{KL weak} alone---using zero validation labels---drops Brier to \CenMlpKlWeakBrier{} and NLL to \CenMlpKlWeakNll{} at \CenMlpKlWeakRank{}\% rank preservation, and \texttt{Temp + KL soft} achieves the best overall accuracy (Brier \CenMlpTempKlSoftBrier{}, NLL \CenMlpTempKlSoftNll{}, Rank \CenMlpTempKlSoftRank{}\%), beating \texttt{Temp + IPF} (Brier \CenMlpTempIpfBrier{}, NLL \CenMlpTempIpfNll{}, Rank \CenMlpTempIpfRank{}\%) on every metric simultaneously. On \texttt{HGB}, \texttt{Temp + KL soft} likewise beats \texttt{Temp + IPF} on Brier (\CenHgbTempKlSoftBrier{} versus \CenHgbTempIpfBrier{}) while raising rank preservation from \CenHgbTempIpfRank{}\% to \CenHgbTempKlSoftRank{}\%.
+
+\section{Practical Guidance and Limitations}
+
+The theory and \NumTotalRealRuns{}-run benchmark yield a clear decision rule for practitioners matching multiclass probabilities to known aggregate totals:
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+\item \textbf{Use KL geometry, never Euclidean Dykstra.} Additive Euclidean updates distort probabilities near zero and fail to converge on most realistic problems (\RealEucConvPct\% convergence).
+\item \textbf{Use exact weak-order tie handling (\texttt{ties="weak"}).} Whenever predictions come from trees, rounded scores, or discrete models, block-boundary constraints avoid artificial intra-tie distortions and strictly lower KL divergence.
+\item \textbf{Match the penalty $\lambda$ to the shift regime and governance requirement.} Under known pure label shift with a well-calibrated linear model and no ranking constraint, standard IPF is Bayes-optimal. Whenever a nonlinear model is deployed under covariate or subpopulation shift, or when within-class rankings matter, use \texttt{Temp + KL soft} (if a source validation split is available) or \texttt{KL soft} ($\lambda \approx 1\text{--}2$); reserve strict \texttt{KL weak} for settings with hard institutional no-reversal rules.
+\end{enumerate}
+
+Three limitations bound these findings. First, all methods operate at the batch level for a given matrix $P \in \mathbb{R}^{N \times J}$ and known target totals $T$; estimating uncertain totals $\hat{T}$ from noisy auxiliary surveys adds sampling variance not modeled here. Second, solving the exponential-cone program scales roughly super-linearly in $NJ$: batches of $N=200\text{--}400$ with $J \le 10$ solve in $0.1\text{--}3$ seconds, whereas tens of thousands of rows require stratified batching or first-order splitting. Third, soft KL introduces a penalty parameter $\lambda$; while the untuned default $\lambda=\SoftLam$ performed robustly across all \NumDatasets{} datasets and \NumModels{} model families, exploring the $\lambda$-Pareto frontier via \texttt{calibrate\_kl\_pareto} remains good practice in high-stakes deployments.
+
+{\small
+\bibliographystyle{working-paper-apsr}
 \bibliography{multiclass}
+}
+
+\clearpage
+\appendix
+
+\section{Proofs and Conic Formulation}
+\label{app:proofs}
+
+\subsection{Proof of \texorpdfstring{Proposition~\ref{prop:ipf}}{Proposition 1}}
+
+\begin{proof}
+Write $Z_i = \sum_{k=1}^J b_k P_{ik} > 0$, so $Q^{\mathrm{IPF}}_{ij} = b_j P_{ij} / Z_i$.
+
+\emph{(a) Binary preservation.} For $J=2$, $P_{i2} = 1 - P_{i1}$, so
+\[
+Q^{\mathrm{IPF}}_{i1} = \frac{b_1 P_{i1}}{b_1 P_{i1} + b_2(1 - P_{i1})} = \frac{1}{1 + (b_2/b_1)(P_{i1}^{-1} - 1)},
+\]
+which is strictly increasing in $P_{i1}$ since $b_1, b_2 > 0$. The same holds for $Q^{\mathrm{IPF}}_{i2} = 1 - Q^{\mathrm{IPF}}_{i1}$.
+
+\emph{(b) Pairwise odds-ratio invariance.} For any $j, k$, the denominator $Z_i$ cancels:
+\[
+\frac{Q^{\mathrm{IPF}}_{i j}}{Q^{\mathrm{IPF}}_{i k}} = \frac{b_j}{b_k}\,\frac{P_{ij}}{P_{ik}}.
+\]
+Since $b_j / b_k > 0$, the ratio $Q^{\mathrm{IPF}}_{ij} / Q^{\mathrm{IPF}}_{ik}$ is a strictly increasing linear function of $P_{ij} / P_{ik}$.
+
+\emph{(c) Exact reversal condition.} Suppose $P_{i_1 j} > P_{i_2 j} > 0$. Then
+\[
+Q^{\mathrm{IPF}}_{i_1 j} < Q^{\mathrm{IPF}}_{i_2 j}
+\;\Longleftrightarrow\;
+\frac{b_j P_{i_1 j}}{Z_{i_1}} < \frac{b_j P_{i_2 j}}{Z_{i_2}}
+\;\Longleftrightarrow\;
+\frac{Z_{i_1}}{Z_{i_2}} > \frac{P_{i_1 j}}{P_{i_2 j}}.
+\]
+If $b_k = b_j$ for all $k \ne j$, then $Z_i = b_j \sum_k P_{ik} = b_j$, so $Z_{i_1}/Z_{i_2} = 1 < P_{i_1 j}/P_{i_2 j}$ and no reversal occurs. Similarly, if $P_{i_1 k} = P_{i_2 k}$ for all $k \ne j$, then $P_{i_1 j} = 1 - \sum_{k \ne j} P_{i_1 k} = P_{i_2 j}$, contradicting $P_{i_1 j} > P_{i_2 j}$. Hence some third class $k \ne j$ with $b_k \ne b_j$ and $P_{i_1 k} \ne P_{i_2 k}$ is necessary.
+
+\emph{(d) Pure-label-shift impossibility.} Under $P_{\mathrm{tgt}}(X \mid Y) = P_{\mathrm{src}}(X \mid Y)$, Bayes' rule gives
+\[
+P_{\mathrm{tgt}}(Y=j \mid X_i) = \frac{(\pi^{\mathrm{tgt}}_j / \pi^{\mathrm{src}}_j)\, P_{\mathrm{src}}(Y=j \mid X_i)}{\sum_k (\pi^{\mathrm{tgt}}_k / \pi^{\mathrm{src}}_k)\, P_{\mathrm{src}}(Y=k \mid X_i)}.
+\]
+This matrix lies in $\mathcal{C}(T)$ for $T_j = \sum_i P_{\mathrm{tgt}}(Y=j \mid X_i)$ and has the multiplicative form~\eqref{eq:ipf}. By uniqueness of the KL projection onto $\mathcal{C}(T)$, it equals $Q^{\mathrm{IPF}}$. Whenever condition~(c) holds, the unique Bayes-optimal matrix in $\mathcal{C}(T)$ violates~\eqref{eq:weak_order}, so no matrix can satisfy all three properties simultaneously.
+\end{proof}
+
+\subsection{Proof of \texorpdfstring{Proposition~\ref{prop:ties}}{Proposition 2}}
+
+\begin{proof}
+($\Leftarrow$) Suppose $u_{j,1} \le \cdots \le u_{j,K_j-1}$ satisfy~\eqref{eq:boundaries}. Take any $i_1, i_2$ with $A_{i_1 j} < A_{i_2 j}$, so $i_1 \in B_{j,k}$ and $i_2 \in B_{j,k'}$ with $k < k'$. Then $Q_{i_1 j} \le u_{j,k} \le u_{j,k'-1} \le Q_{i_2 j}$.
+
+($\Rightarrow$) Conversely, suppose $Q_{\cdot j}$ satisfies~\eqref{eq:weak_order}. For $k = 1,\dots,K_j - 1$, set $u_{j,k} = \max_{r \le k} \max_{i \in B_{j,r}} Q_{ij}$. By construction $u_{j,1} \le \cdots \le u_{j,K_j-1}$ and $Q_{ij} \le u_{j,k}$ for all $i \in B_{j,k}$ ($k < K_j$). For any $i' \in B_{j,k'}$ with $k' > 1$ and any $i \in B_{j,r}$ with $r \le k' - 1$, we have $A_{ij} < A_{i'j}$, so~\eqref{eq:weak_order} gives $Q_{ij} \le Q_{i'j}$. Taking the maximum over $r \le k'-1$ and $i \in B_{j,r}$ yields $u_{j,k'-1} \le Q_{i'j}$.
+
+Each unit $i \in B_{j,k}$ participates in at most two inequalities ($Q_{ij} \le u_{j,k}$ and $u_{j,k-1} \le Q_{ij}$), plus $K_j - 2$ ordering inequalities among $u$, totaling at most $2N + K_j - 2$ linear inequalities. Because blocks $B_{j,k}$ depend only on the values of $A_{\cdot j}$ and not on row indices, $\mathcal{W}(A)$ is invariant to row permutations. Every matrix in the stable-sort cone $\mathcal{S}(A)$ trivially satisfies~\eqref{eq:weak_order}, so $\mathcal{S}(A) \subseteq \mathcal{W}(A)$, giving the divergence inequality. Finally, $Q_{ij} = T_j/N$ lies in $\mathcal{C}(T)$ and satisfies~\eqref{eq:weak_order} with $u_{j,k} = T_j/N$.
+\end{proof}
+
+\subsection{Proofs of \texorpdfstring{Propositions~\ref{prop:bregman} and~\ref{prop:pareto}}{Propositions 3 and 4}}
+
+\begin{proof}[Proof of Proposition~\ref{prop:bregman}]
+Form the Lagrangian for~\eqref{eq:soft} with multipliers $\nu \in \mathbb{R}^N$ on $Q\mathbf{1}_J = \mathbf{1}_N$, $\mu \in \mathbb{R}^J$ on $Q^\top\mathbf{1}_N = T$, and $\alpha_r \ge 0$ on each relaxed inequality $s_r^\top (q, u) - v_r \le 0$. Stationarity with respect to $v_r \ge 0$ gives $0 \le \alpha_r \le \lambda$. Stationarity with respect to $Q_{ij} > 0$ yields
+\[
+\phi'(Q^\star_{ij}) - \phi'(R_{ij}) + \nu_i + \mu_j + \gamma_{ij} = 0,
+\]
+where $\gamma_{ij}$ is the signed sum of active multipliers $\alpha_r$ incident to $Q_{ij}$. Substituting $\phi'(x) = \log x$ gives $Q^\star_{ij} = R_{ij}\exp(-\nu_i - \mu_j - \gamma_{ij})$, which is strictly positive when $R_{ij} > 0$ and reduces to~\eqref{eq:ipf} with $b_j = e^{-\mu_j}$ when $\lambda = 0$ ($\alpha_r = 0$). Substituting $\phi'(x) = x$ with nonnegativity multipliers $\eta_{ij} \ge 0$ yields $Q^\star_{ij} = \max(0, R_{ij} - \nu_i - \mu_j - \gamma_{ij})$.
+\end{proof}
+
+\begin{proof}[Proof of Proposition~\ref{prop:pareto}]
+Write $\operatorname{KL}(Q \| R) = \sum_{i,j: R_{ij} > 0} Q_{ij}\log Q_{ij} - \sum_{i,j: R_{ij} > 0} Q_{ij}\log R_{ij}$ (dropping constants since $\sum_{i,j} Q_{ij} = N$). Introducing one epigraph variable $t_{ij}$ per positive entry $R_{ij} > 0$ with $t_{ij} \ge Q_{ij}\log Q_{ij}$ is equivalent to the exponential-cone constraint $(-t_{ij}, Q_{ij}, 1) \in \mathcal{K}_{\exp} = \{(x,y,z) : y > 0,\; z \ge y\exp(x/y)\} \cup \{(x,0,z) : x \le 0, z \ge 0\}$. Combining with the linear equalities of $\mathcal{C}(T)$ and linear inequalities~\eqref{eq:boundaries} yields a convex exponential-cone program of size $O(NJ)$ solved directly by Clarabel \citep{goulart2024clarabel}.
+
+For monotonicity, let $0 \le \lambda_1 < \lambda_2$ with optima $Q_1 = Q^\star(\lambda_1)$ and $Q_2 = Q^\star(\lambda_2)$. Optimality gives
+\begin{align*}
+\operatorname{KL}(Q_1 \| R) + \lambda_1 V_A(Q_1) &\le \operatorname{KL}(Q_2 \| R) + \lambda_1 V_A(Q_2), \\
+\operatorname{KL}(Q_2 \| R) + \lambda_2 V_A(Q_2) &\le \operatorname{KL}(Q_1 \| R) + \lambda_2 V_A(Q_1).
+\end{align*}
+Adding the two inequalities yields $(\lambda_2 - \lambda_1)[V_A(Q_2) - V_A(Q_1)] \le 0$, so $V_A(Q_2) \le V_A(Q_1)$. Substituting back into the first inequality gives $\operatorname{KL}(Q_1 \| R) \le \operatorname{KL}(Q_2 \| R)$.
+\end{proof}
+
+\clearpage
+\section{Complete Real-Data Results and Reproduction}
+\label{app:details}
+
+Table~\ref{tab:real_by_dataset} reports mean performance for every dataset and shift regime averaged across all four model families and ten seeds.
+
+\begingroup\footnotesize\setlength{\tabcolsep}{4pt}
+\input{generated/real_by_dataset_table.tex}
+\endgroup
+
+\subsection{Reproduction}
+
+All package tests, benchmark experiments, exhibits, and this manuscript reproduce from the repository root (\url{https://github.com/finite-sample/rank-preserving-calibration}, v0.12.0):
+\begin{lstlisting}
+uv sync --all-groups
+uv run pytest
+uv run --with pandas --with matplotlib python ms/experiments/run_benchmark.py
+uv run --with pandas --with matplotlib --with jinja2 python ms/experiments/build_exhibits.py
+latexmk -cd -pdf -interaction=nonstopmode -halt-on-error -Werror ms/rank-preserving-multiclass.tex
+\end{lstlisting}
 
 \end{document}

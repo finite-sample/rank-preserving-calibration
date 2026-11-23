@@ -163,34 +163,52 @@ def _prepare_kl(
     return P, M, R, A
 
 
+def _compute_weak_rank_violation(Q: np.ndarray, A: np.ndarray) -> float:
+    """Maximum strict weak-order violation: max_{a_i < a_k} (q_i - q_k)_+."""
+    max_viol = 0.0
+    for j in range(Q.shape[1]):
+        _, inv = np.unique(A[:, j], return_inverse=True)
+        K = int(inv.max()) + 1
+        if K <= 1:
+            continue
+        q_col = Q[:, j]
+        b_max = np.full(K, -np.inf)
+        b_min = np.full(K, np.inf)
+        np.maximum.at(b_max, inv, q_col)
+        np.minimum.at(b_min, inv, q_col)
+        prefix_max = np.maximum.accumulate(b_max)
+        viol = float(np.max(np.maximum(0.0, prefix_max[:-1] - b_min[1:])))
+        if viol > max_viol:
+            max_viol = viol
+    return max_viol
+
+
 def _kl_result(
-    Q: np.ndarray, R: np.ndarray, A: np.ndarray, M: np.ndarray, iterations: int
+    Q: np.ndarray,
+    R: np.ndarray,
+    A: np.ndarray,
+    M: np.ndarray,
+    iterations: int,
+    *,
+    ties: str = "weak",
+    feasibility_tol: float = _FEASIBILITY_TOL,
 ) -> KLCalibrationResult:
-    """Package a solved matrix with its diagnostics.
-
-    Args:
-        Q: Solved matrix.
-        R: KL reference.
-        A: Ranking anchor.
-        M: Target column sums.
-        iterations: Solver iterations.
-
-    Returns:
-        KLCalibrationResult for Q.
-    """
+    """Package a solved matrix with its diagnostics."""
     max_row_error = float(np.max(np.abs(Q.sum(axis=1) - 1.0)))
     max_col_error = float(np.max(np.abs(Q.sum(axis=0) - M)))
+    max_rank_violation = (
+        _compute_weak_rank_violation(Q, A)
+        if ties == "weak"
+        else _compute_rank_violation(Q, A)
+    )
     return KLCalibrationResult(
         Q=Q,
-        # Judged on the matrix, not the solver's status: a stall retried at a
-        # looser tolerance must still meet this. Measured worst cases over 40
-        # peaked problems were 1.3e-9 (rows) and 2.3e-8 (columns).
-        converged=max(max_row_error, max_col_error) <= _FEASIBILITY_TOL,
+        converged=max(max_row_error, max_col_error) <= feasibility_tol,
         iterations=iterations,
         kl_divergence=_kl_div_matrix(Q, R),
         max_row_error=max_row_error,
         max_col_error=max_col_error,
-        max_rank_violation=_compute_rank_violation(Q, A),
+        max_rank_violation=max_rank_violation,
         final_change=0.0,
     )
 
@@ -202,6 +220,8 @@ def calibrate_kl(
     A: np.ndarray | None = None,
     tol: float = 1e-10,
     verbose: bool = False,
+    *,
+    ties: str = "weak",
 ) -> KLCalibrationResult:
     """Calibrate by minimizing KL divergence under rank preservation.
 
@@ -210,51 +230,42 @@ def calibrate_kl(
         min KL(Q||R)  s.t.  rows of Q on the simplex, column sums = M,
                             each column non-decreasing in the order of A
 
-    The anchor-reference decoupling separates what divergence is measured
-    from (R) and what fixes the rank order (A).
-
-    Args:
-        P: Input probability matrix of shape (N, J).
-        M: Target column sums of shape (J,). Must sum to N.
-        R: Reference distribution for KL divergence. If None, uses P.
-        A: Anchor for rank ordering. If None, uses P.
-        tol: Solver gap and feasibility tolerance.
-        verbose: Print the solver log.
-
-    Returns:
-        KLCalibrationResult with calibrated matrix and diagnostics.
-
-    Raises:
-        CalibrationError: If the inputs are invalid or the solver fails.
-
-    Examples:
-        >>> import numpy as np
-        >>> from rank_preserving_calibration import calibrate_kl
-        >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
-        >>> M = np.array([0.8, 0.8, 0.4])
-        >>> result = calibrate_kl(P, M)
-        >>> round(result.max_col_error, 6), result.max_rank_violation < 1e-8
-        (0.0, True)
-
-        With anchor-reference decoupling:
-
-        >>> A = np.array([[0.6, 0.3, 0.1], [0.4, 0.4, 0.2]])
-        >>> result = calibrate_kl(P, M, R=P, A=A)
+    With ``ties="weak"`` (default), tied anchor entries ``A[i1, j] == A[i2, j]``
+    are unconstrained relative to each other and only strictly ordered blocks
+    are constrained via block-boundary variables. With ``ties="stable"``, ties
+    follow row-index order (legacy behavior).
     """
     _configure_logging(verbose)
+    if ties not in ("weak", "stable"):
+        raise CalibrationError(f"ties must be 'weak' or 'stable', got {ties!r}")
     P, M, R, A = _prepare_kl(P, M, R, A, tol)
-    # Exact penalty with a certificate. The penalized problem relaxes the
-    # constrained one, so a penalized minimiser with no rank violations is the
-    # constrained minimiser. Posing the constraints directly stalls the
-    # interior-point solver when many of them are active at once; the hinge
-    # variables keep the problem strictly interior.
-    # "No violations" means none beyond what the solver can resolve: leftovers
-    # of ~1e-9 do not shrink as lam grows, so they are precision, not a lam
-    # that is too small. Weights past 1e5 condition the problem badly.
+    feas_tol = max(_FEASIBILITY_TOL, 100.0 * tol)
+    rank_tol = max(1e-7, 100.0 * tol)
+    if ties == "weak":
+        try:
+            Q, iterations, _ = _solve_kl(R, A, M, None, tol, verbose)
+        except CalibrationError as exc:
+            if "PrimalInfeasible" in str(exc):
+                raise CalibrationError(
+                    "KL calibration could not certify rank preservation: "
+                    "the rank constraints are probably infeasible with these "
+                    f"targets ({exc})."
+                ) from exc
+            raise
+        result = _kl_result(
+            Q, R, A, M, iterations, ties="weak", feasibility_tol=feas_tol
+        )
+        if result.converged and result.max_rank_violation <= rank_tol:
+            return result
+    # Fallback / stable-tie exact-penalty path.
     for lam in (1e3, 1e4, 1e5):
-        Q, iterations, _ = _solve_kl(R, A, M, lam, tol, verbose)
-        result = _kl_result(Q, R, A, M, iterations)
-        if result.converged and result.max_rank_violation <= _RANK_TOL:
+        Q, iterations, _ = (
+            _solve_kl(R, A, M, lam, tol, verbose)
+            if ties == "weak"
+            else _solve_kl(R, A, M, lam, tol, verbose, ties=ties)
+        )
+        result = _kl_result(Q, R, A, M, iterations, ties=ties, feasibility_tol=feas_tol)
+        if result.converged and result.max_rank_violation <= rank_tol:
             return result
     raise CalibrationError(
         "KL calibration could not certify rank preservation: violations remain "
@@ -282,45 +293,66 @@ def _solve_kl_once(
     R: np.ndarray,
     A: np.ndarray,
     M: np.ndarray,
-    lam: float,
+    lam: float | None,
     tol: float,
     verbose: bool,
+    *,
+    ties: str = "weak",
 ) -> tuple[np.ndarray, str, int]:
-    """Minimize KL(Q||R) + lam * V_A(Q) over C(M) as an exponential-cone program.
-
-    Variables are x = [q, t, v]: the N*J entries of Q (row-major), one
-    epigraph variable per entry with t >= q log(q / r), and one hinge per
-    adjacent pair in anchor order with v >= q_lower - q_upper, v >= 0.
-
-    KL = sum(q log q) - sum(q log r) - sum(q) + sum(r), so the epigraph is
-    t >= q log q, and log r goes into the linear objective, giving
-    sum(t) - sum(q log r) + lam * sum(v); -sum(q) + sum(r) is constant because
-    the row sums fix sum(q) = N. Clarabel's cone is s3 >= s2 exp(s1 / s2) for
-    s = b - A x, so (s1, s2, s3) = (-t, q, 1). Keeping r out of the cone
-    matters: with r itself as s3, a confident classifier's r ~ 1e-10 left the
-    solver stalled. An entry with r = 0 forces q = 0, imposed directly.
-
-    Args:
-        R: KL reference of shape (N, J), non-negative.
-        A: Ranking anchor of shape (N, J).
-        M: Target column sums of shape (J,).
-        lam: Rank penalty weight.
-        tol: Solver gap and feasibility tolerance.
-        verbose: Print the solver log.
-
-    Returns:
-        Tuple of (Q, solver status, iterations).
-    """
+    """Minimize KL(Q||R) (+ lam * V_A(Q)) over C(M) as an exponential-cone program."""
     import clarabel
     import scipy.sparse as sp
 
     N, J = R.shape
     n = N * J
-    m = J * (N - 1)
-    n_var = 2 * n + m
     r = R.reshape(-1)
     zero_r = np.flatnonzero(r == 0)
     pos_r = np.flatnonzero(r > 0)
+
+    has_ties = ties == "weak" and any(len(np.unique(A[:, j])) < N for j in range(J))
+    soft = lam is not None
+
+    n_u = 0
+    n_ineq = 0
+    n_mono = 0
+    m = J * (N - 1)
+    ineq_q: list[int] = []
+    ineq_u: list[int] = []
+    ineq_sq: list[float] = []
+    ineq_su: list[float] = []
+    u_lo: list[int] = []
+    u_hi: list[int] = []
+
+    if has_ties:
+        for j in range(J):
+            _, inv = np.unique(A[:, j], return_inverse=True)
+            K = int(inv.max()) + 1
+            if K <= 1:
+                continue
+            for i in range(N):
+                k_blk = int(inv[i])
+                q_idx = i * J + j
+                if k_blk < K - 1:
+                    ineq_q.append(q_idx)
+                    ineq_u.append(n_u + k_blk)
+                    ineq_sq.append(1.0)
+                    ineq_su.append(-1.0)
+                if k_blk > 0:
+                    ineq_q.append(q_idx)
+                    ineq_u.append(n_u + k_blk - 1)
+                    ineq_sq.append(-1.0)
+                    ineq_su.append(1.0)
+            for k_blk in range(K - 2):
+                u_lo.append(n_u + k_blk)
+                u_hi.append(n_u + k_blk + 1)
+            n_u += K - 1
+        n_ineq = len(ineq_q)
+        n_mono = len(u_lo)
+        n_v = n_ineq if soft else 0
+        n_var = 2 * n + n_u + n_v
+    else:
+        n_v = m if soft else 0
+        n_var = 2 * n + n_v
 
     blocks = []
     b_parts = []
@@ -332,36 +364,114 @@ def _solve_kl_once(
     blocks.append(sp.csr_matrix((np.ones(n), (k % J, k)), shape=(J, n_var)))
     b_parts.append(M)
     z = zero_r.size
-    blocks.append(
-        sp.csr_matrix(
-            (np.ones(2 * z), (np.arange(2 * z), np.r_[zero_r, n + zero_r])),
-            shape=(2 * z, n_var),
+    if z > 0:
+        blocks.append(
+            sp.csr_matrix(
+                (np.ones(2 * z), (np.arange(2 * z), np.r_[zero_r, n + zero_r])),
+                shape=(2 * z, n_var),
+            )
         )
-    )
-    b_parts.append(np.zeros(2 * z))
+        b_parts.append(np.zeros(2 * z))
     n_zero = N + J + 2 * z
 
-    # Non-negative cone: q_lower - q_upper - v <= 0, then -v <= 0.
-    lower = np.concatenate(
-        [np.argsort(A[:, j], kind="mergesort")[:-1] * J + j for j in range(J)]
-    )
-    upper = np.concatenate(
-        [np.argsort(A[:, j], kind="mergesort")[1:] * J + j for j in range(J)]
-    )
-    h = np.arange(m)
-    blocks.append(
-        sp.csr_matrix(
-            (
-                np.r_[np.ones(m), -np.ones(m), -np.ones(m)],
-                (np.r_[h, h, h], np.r_[lower, upper, 2 * n + h]),
-            ),
-            shape=(m, n_var),
+    # Non-negative cone: rank constraints (and hinge slacks if soft).
+    if has_ties:
+        r_idx = np.arange(n_ineq)
+        if soft:
+            blocks.append(
+                sp.csr_matrix(
+                    (
+                        np.r_[ineq_sq, ineq_su, -np.ones(n_ineq)],
+                        (
+                            np.r_[r_idx, r_idx, r_idx],
+                            np.r_[
+                                ineq_q,
+                                2 * n + np.array(ineq_u, dtype=int),
+                                2 * n + n_u + r_idx,
+                            ],
+                        ),
+                    ),
+                    shape=(n_ineq, n_var),
+                )
+            )
+        else:
+            blocks.append(
+                sp.csr_matrix(
+                    (
+                        np.r_[ineq_sq, ineq_su],
+                        (
+                            np.r_[r_idx, r_idx],
+                            np.r_[ineq_q, 2 * n + np.array(ineq_u, dtype=int)],
+                        ),
+                    ),
+                    shape=(n_ineq, n_var),
+                )
+            )
+        b_parts.append(np.zeros(n_ineq))
+        if n_mono > 0:
+            rm = np.arange(n_mono)
+            blocks.append(
+                sp.csr_matrix(
+                    (
+                        np.r_[np.ones(n_mono), -np.ones(n_mono)],
+                        (
+                            np.r_[rm, rm],
+                            np.r_[
+                                2 * n + np.array(u_lo, dtype=int),
+                                2 * n + np.array(u_hi, dtype=int),
+                            ],
+                        ),
+                    ),
+                    shape=(n_mono, n_var),
+                )
+            )
+            b_parts.append(np.zeros(n_mono))
+        if soft:
+            rv = np.arange(n_v)
+            blocks.append(
+                sp.csr_matrix(
+                    (-np.ones(n_v), (rv, 2 * n + n_u + rv)), shape=(n_v, n_var)
+                )
+            )
+            b_parts.append(np.zeros(n_v))
+        n_nonneg = n_ineq + n_mono + n_v
+    else:
+        lower = np.concatenate(
+            [np.argsort(A[:, j], kind="mergesort")[:-1] * J + j for j in range(J)]
         )
-    )
-    blocks.append(sp.csr_matrix((-np.ones(m), (h, 2 * n + h)), shape=(m, n_var)))
-    b_parts.extend([np.zeros(m), np.zeros(m)])
+        upper = np.concatenate(
+            [np.argsort(A[:, j], kind="mergesort")[1:] * J + j for j in range(J)]
+        )
+        h = np.arange(m)
+        if soft:
+            blocks.append(
+                sp.csr_matrix(
+                    (
+                        np.r_[np.ones(m), -np.ones(m), -np.ones(m)],
+                        (np.r_[h, h, h], np.r_[lower, upper, 2 * n + h]),
+                    ),
+                    shape=(m, n_var),
+                )
+            )
+            blocks.append(
+                sp.csr_matrix((-np.ones(m), (h, 2 * n + h)), shape=(m, n_var))
+            )
+            b_parts.extend([np.zeros(m), np.zeros(m)])
+            n_nonneg = 2 * m
+        else:
+            blocks.append(
+                sp.csr_matrix(
+                    (
+                        np.r_[np.ones(m), -np.ones(m)],
+                        (np.r_[h, h], np.r_[lower, upper]),
+                    ),
+                    shape=(m, n_var),
+                )
+            )
+            b_parts.append(np.zeros(m))
+            n_nonneg = m
 
-    # Exponential cones, three rows per entry with r > 0: (-t, q, r).
+    # Exponential cones, three rows per entry with r > 0: (-t, q, 1).
     e = pos_r.size
     rows = 3 * np.arange(e)
     blocks.append(
@@ -381,10 +491,14 @@ def _solve_kl_once(
     b = np.concatenate(b_parts)
     log_r = np.zeros(n)
     log_r[pos_r] = np.log(r[pos_r])
-    c = np.r_[-log_r, np.ones(n), np.full(m, lam)]
+    c = np.zeros(n_var)
+    c[:n] = -log_r
+    c[n : 2 * n] = 1.0
+    if soft:
+        c[2 * n + n_u :] = float(lam)
     cones = [
         clarabel.ZeroConeT(n_zero),  # type: ignore[attr-defined]
-        clarabel.NonnegativeConeT(2 * m),  # type: ignore[attr-defined]
+        clarabel.NonnegativeConeT(n_nonneg),  # type: ignore[attr-defined]
     ] + [clarabel.ExponentialConeT()] * e  # type: ignore[attr-defined]
 
     settings = clarabel.DefaultSettings()  # type: ignore[attr-defined]
@@ -392,9 +506,6 @@ def _solve_kl_once(
     settings.tol_gap_abs = tol
     settings.tol_gap_rel = tol
     settings.tol_feas = tol
-    # Clarabel reports AlmostSolved when it meets these looser tolerances but
-    # not the primary ones; the exponential cone does that at the odd lambda.
-    # At 100x the primary tolerance Q is still accurate to about 1e-7.
     settings.reduced_tol_gap_abs = 100 * tol
     settings.reduced_tol_gap_rel = 100 * tol
     settings.reduced_tol_feas = 100 * tol
@@ -411,34 +522,18 @@ def _solve_kl(
     R: np.ndarray,
     A: np.ndarray,
     M: np.ndarray,
-    lam: float,
+    lam: float | None,
     tol: float,
     verbose: bool,
+    *,
+    ties: str = "weak",
 ) -> tuple[np.ndarray, int, float]:
-    """Solve the KL program, loosening the tolerance if the solver stalls.
-
-    The interior-point method occasionally reports InsufficientProgress at a
-    tight tolerance, on some platforms and not others. Retrying at 100x and
-    then 10^4x the tolerance recovered every case in a sweep of 40 peaked
-    problems; at 1e-8 the matrix is still accurate to about 1e-5.
-
-    Args:
-        R: KL reference of shape (N, J), non-negative.
-        A: Ranking anchor of shape (N, J).
-        M: Target column sums of shape (J,).
-        lam: Rank penalty weight.
-        tol: The tolerance to try first.
-        verbose: Print the solver log.
-
-    Returns:
-        Tuple of (Q, iterations, tolerance achieved).
-
-    Raises:
-        CalibrationError: If the solver fails at every tolerance.
-    """
+    """Solve the KL program, loosening the tolerance if the solver stalls."""
     status = ""
     for attempt in (tol, 100 * tol, 1e4 * tol):
-        Q, status, iterations = _solve_kl_once(R, A, M, lam, attempt, verbose)
+        Q, status, iterations = _solve_kl_once(
+            R, A, M, lam, attempt, verbose, ties=ties
+        )
         if status in ("Solved", "AlmostSolved"):
             return Q, iterations, attempt
     raise CalibrationError(
@@ -455,55 +550,23 @@ def calibrate_kl_soft(
     A: np.ndarray | None = None,
     tol: float = 1e-10,
     verbose: bool = False,
+    *,
+    ties: str = "weak",
 ) -> KLCalibrationResult:
-    """Soft KL calibration with a λ-weighted rank penalty.
-
-    Solves exactly, as an exponential-cone program::
-
-        min KL(Q||R) + λ·V_A(Q)  s.t.  Q ∈ C(M)
-
-    Where:
-        - KL(Q||R) = sum q log(q / r) is the divergence from the reference R
-        - V_A(Q) sums every adjacent downward step, (q_lower - q_upper)_+,
-          within each column in the order of the anchor A
-        - C(M) is rows on the simplex with column sums equal to M
-
-    At λ = 0 this is the KL projection onto C(M), which IPF also computes;
-    for λ large enough the penalty is exact and the result equals
-    :func:`calibrate_kl`.
-
-    Args:
-        P: Input probability matrix of shape (N, J).
-        M: Target column sums of shape (J,). Must sum to N.
-        lam: Rank penalty weight. Larger = more isotonic.
-        R: Reference for KL divergence. Default: P.
-        A: Anchor for rank ordering. Default: P.
-        tol: Solver gap and feasibility tolerance.
-        verbose: Print the solver log.
-
-    Returns:
-        KLCalibrationResult with the calibrated matrix.
-
-    Raises:
-        CalibrationError: If the inputs are invalid, λ is negative, R or A has
-            the wrong shape or R a negative entry, or the solver fails.
-
-    Examples:
-        >>> import numpy as np
-        >>> from rank_preserving_calibration import calibrate_kl_soft
-        >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
-        >>> M = np.array([0.8, 0.8, 0.4])
-        >>> strong = calibrate_kl_soft(P, M, lam=10.0)
-        >>> weak = calibrate_kl_soft(P, M, lam=0.0)
-        >>> bool(strong.max_rank_violation <= weak.max_rank_violation)
-        True
-    """
+    """Soft KL calibration with a λ-weighted rank penalty."""
     _configure_logging(verbose)
     if lam < 0:
         raise CalibrationError("lam must be non-negative")
+    if ties not in ("weak", "stable"):
+        raise CalibrationError(f"ties must be 'weak' or 'stable', got {ties!r}")
     P, M, R, A = _prepare_kl(P, M, R, A, tol)
-    Q, iterations, _ = _solve_kl(R, A, M, float(lam), tol, verbose)
-    result = _kl_result(Q, R, A, M, iterations)
+    Q, iterations, _ = (
+        _solve_kl(R, A, M, float(lam), tol, verbose)
+        if ties == "weak"
+        else _solve_kl(R, A, M, float(lam), tol, verbose, ties=ties)
+    )
+    feas_tol = max(_FEASIBILITY_TOL, 100.0 * tol)
+    result = _kl_result(Q, R, A, M, iterations, ties=ties, feasibility_tol=feas_tol)
     if not result.converged:
         warnings.warn(
             f"KL soft solve missed the constraints: row error "
@@ -514,6 +577,28 @@ def calibrate_kl_soft(
     return result
 
 
+def _compute_weak_rank_penalty(Q: np.ndarray, A: np.ndarray) -> float:
+    """Exact L1 weak-order penalty matching the soft KL objective."""
+    N, J = Q.shape
+    has_ties = any(len(np.unique(A[:, j])) < N for j in range(J))
+    if not has_ties:
+        orders = [np.argsort(A[:, j], kind="mergesort") for j in range(J)]
+        return _compute_rank_penalty_from_orders(Q, orders)
+    total = 0.0
+    for j in range(J):
+        _, inv = np.unique(A[:, j], return_inverse=True)
+        K = int(inv.max()) + 1
+        if K <= 1:
+            continue
+        q_col = Q[:, j]
+        b_max = np.full(K, -np.inf)
+        b_min = np.full(K, np.inf)
+        np.maximum.at(b_max, inv, q_col)
+        np.minimum.at(b_min, inv, q_col)
+        total += float(np.maximum(0.0, b_max[:-1] - b_min[1:]).sum())
+    return total
+
+
 def calibrate_kl_pareto(
     P: np.ndarray,
     M: np.ndarray,
@@ -522,46 +607,28 @@ def calibrate_kl_pareto(
     A: np.ndarray | None = None,
     tol: float = 1e-10,
     verbose: bool = False,
+    *,
+    ties: str = "weak",
 ) -> KLParetoResult:
-    """Compute the frontier of KL divergence against rank violation.
-
-    Solves :func:`calibrate_kl_soft` at each λ, reporting the whole path rather
-    than a single tuned point. Because each solve is exact, KL is
-    non-decreasing and the rank penalty non-increasing along the path.
-
-    Args:
-        P: Input probability matrix of shape (N, J).
-        M: Target column sums of shape (J,).
-        lambda_grid: λ values to solve at. Default: 20 points from 0.01 to 1000.
-        R: Reference for KL divergence. Default: P.
-        A: Anchor for rank ordering. Default: P.
-        tol: Solver gap and feasibility tolerance.
-        verbose: Print the solver logs.
-
-    Returns:
-        KLParetoResult with solutions along the frontier, in increasing λ.
-
-    Examples:
-        >>> import numpy as np
-        >>> from rank_preserving_calibration import calibrate_kl_pareto
-        >>> P = np.array([[0.7, 0.2, 0.1], [0.3, 0.5, 0.2]])
-        >>> M = np.array([0.8, 0.8, 0.4])
-        >>> result = calibrate_kl_pareto(P, M)
-        >>> len(result.solutions) == len(result.kl_values) == len(result.lambda_path)
-        True
-    """
+    """Compute the frontier of KL divergence against rank violation."""
     _validate_inputs(P, M, max_iters=1, tol=tol, feasibility_tol=0.0)
+    if ties not in ("weak", "stable"):
+        raise CalibrationError(f"ties must be 'weak' or 'stable', got {ties!r}")
     grid = np.logspace(-2, 3, 20) if lambda_grid is None else lambda_grid
     A_ = np.asarray(P if A is None else A, dtype=np.float64)
     column_orders = [np.argsort(A_[:, j], kind="mergesort") for j in range(A_.shape[1])]
 
     result = KLParetoResult()
     for lam in sorted(float(x) for x in grid):
-        sol = calibrate_kl_soft(P, M, lam=lam, R=R, A=A, tol=tol, verbose=verbose)
+        sol = calibrate_kl_soft(
+            P, M, lam=lam, R=R, A=A, tol=tol, verbose=verbose, ties=ties
+        )
         result.solutions.append((lam, sol.Q.copy()))
         result.kl_values.append(sol.kl_divergence)
         result.rank_violations.append(
-            _compute_rank_penalty_from_orders(sol.Q, column_orders)
+            _compute_weak_rank_penalty(sol.Q, A_)
+            if ties == "weak"
+            else _compute_rank_penalty_from_orders(sol.Q, column_orders)
         )
         result.lambda_path.append(lam)
     return result

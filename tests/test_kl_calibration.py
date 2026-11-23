@@ -507,7 +507,8 @@ class TestKLTiedScores:
         P /= P.sum(axis=1, keepdims=True)
         M = P.sum(axis=0) * np.array([1.3, 1.0, 0.7])
         M *= len(P) / M.sum()
-        result = calibrate_kl(P, M)
+        result_stable = calibrate_kl(P, M, ties="stable")
+        result_weak = calibrate_kl(P, M, ties="weak")
 
         Q = cp.Variable(P.shape)
         cons = [cp.sum(Q, axis=1) == 1, cp.sum(Q, axis=0) == M]
@@ -517,7 +518,74 @@ class TestKLTiedScores:
         problem = cp.Problem(cp.Minimize(cp.sum(cp.kl_div(Q, P))), cons)
         problem.solve(solver=cp.CLARABEL)
         assert problem.status == "optimal"
-        assert result.kl_divergence == pytest.approx(problem.value, abs=1e-6)
+        assert result_stable.kl_divergence == pytest.approx(problem.value, abs=1e-6)
+        assert result_weak.kl_divergence <= result_stable.kl_divergence + 1e-8
+        assert result_weak.max_rank_violation <= 1e-8
+
+    def test_weak_ties_is_invariant_to_row_permutation(self):
+        """Permuting rows must permute Q identically under ties='weak'."""
+        rng = np.random.default_rng(7)
+        P = rng.integers(1, 5, (24, 4)).astype(float)
+        P /= P.sum(axis=1, keepdims=True)
+        M = P.sum(axis=0) * np.array([1.4, 0.9, 0.8, 1.1])
+        M *= len(P) / M.sum()
+
+        r1 = calibrate_kl(P, M, ties="weak")
+        perm = rng.permutation(len(P))
+        r2 = calibrate_kl(P[perm], M, ties="weak")
+        np.testing.assert_allclose(r2.Q, r1.Q[perm], atol=1e-5)
+        assert r2.kl_divergence == pytest.approx(r1.kl_divergence, abs=1e-7)
+
+    def test_weak_ties_handles_heavy_discrete_ties(self):
+        """Heavy ties (like RF outputs) solve cleanly and beat ties='stable'."""
+        rng = np.random.default_rng(11)
+        P = np.round(rng.dirichlet(np.ones(5), size=40) * 10.0) / 10.0
+        P = np.clip(P, 1e-3, 1.0)
+        P /= P.sum(axis=1, keepdims=True)
+        M = P.sum(axis=0) * np.array([1.5, 0.7, 1.2, 0.8, 0.9])
+        M *= len(P) / M.sum()
+
+        r_weak = calibrate_kl(P, M, tol=1e-8, ties="weak")
+        r_stable = calibrate_kl(P, M, tol=1e-8, ties="stable")
+        assert r_weak.converged
+        assert r_weak.max_rank_violation <= 1e-6
+        assert r_weak.kl_divergence < r_stable.kl_divergence - 1e-4
+
+    def test_weak_ties_soft_and_pareto_and_constant_column(self):
+        """Cover soft KL with ties, pareto with ties, and constant anchor columns."""
+        rng = np.random.default_rng(13)
+        P = np.round(rng.dirichlet(np.ones(3), size=16) * 5.0) / 5.0
+        P = np.clip(P, 1e-3, 1.0)
+        P /= P.sum(axis=1, keepdims=True)
+        M = P.sum(axis=0) * np.array([1.3, 0.9, 0.8])
+        M *= len(P) / M.sum()
+
+        r_soft = calibrate_kl_soft(P, M, lam=2.0, tol=1e-8, ties="weak")
+        assert r_soft.converged
+
+        par = calibrate_kl_pareto(
+            P, M, lambda_grid=[0.1, 2.0, 20.0], tol=1e-8, ties="weak"
+        )
+        assert len(par.solutions) == 3
+
+        # Constant anchor column (K == 1)
+        A_const = np.full_like(P, 1.0 / 3.0)
+        r_const = calibrate_kl(P, M, A=A_const, tol=1e-8, ties="weak")
+        assert r_const.converged
+        assert r_const.max_rank_violation == 0.0
+        par_const = calibrate_kl_pareto(
+            P, M, lambda_grid=[0.5, 5.0], A=A_const, tol=1e-8, ties="weak"
+        )
+        assert all(v == 0.0 for v in par_const.rank_violations)
+
+    def test_rejects_invalid_ties_argument(self):
+        P, M = _shifted_problem(N=8)
+        with pytest.raises(CalibrationError, match="ties"):
+            calibrate_kl(P, M, ties="bogus")
+        with pytest.raises(CalibrationError, match="ties"):
+            calibrate_kl_soft(P, M, lam=1.0, ties="bogus")
+        with pytest.raises(CalibrationError, match="ties"):
+            calibrate_kl_pareto(P, M, lambda_grid=[1.0], ties="bogus")
 
 
 class TestKLSlackProjection:
