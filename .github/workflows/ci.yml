@@ -20,7 +20,7 @@ jobs:
     with:
       # requires-python floors at 3.12, so the reusable default of
       # ["3.11", "3.14"] cannot resolve its first leg.
-      python-versions: '["3.12", "3.14"]'
+      python-versions: '["3.13", "3.14"]'
       wheel-import: rank_preserving_calibration
       coverage-floor: 98
       run-preen: true
