@@ -1535,8 +1535,8 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "clarabel", specifier = ">=0.9" },
-    { name = "numpy", specifier = ">=1.20" },
-    { name = "scipy", specifier = ">=1.12" },
+    { name = "numpy", specifier = ">=2.1.0" },
+    { name = "scipy", specifier = ">=1.14.1" },
 ]
 
 [package.metadata.requires-dev]
