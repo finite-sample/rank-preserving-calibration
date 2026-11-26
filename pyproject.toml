@@ -26,7 +26,7 @@ dependencies = [
   "numpy>=2.1.0",
   # scipy.optimize.isotonic_regression arrived in 1.12.
   "scipy>=1.14.1",
-  "clarabel>=0.9",
+  "clarabel>=0.11.1",
 ]
 
 [project.urls]
