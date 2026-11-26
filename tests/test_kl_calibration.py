@@ -475,8 +475,8 @@ class TestKLConvergenceIsJudgedOnTheMatrix:
 
         real = kl._solve_kl
 
-        def fake(R, A, M, lam, tol, verbose):
-            Q, iterations, achieved = real(R, A, M, lam, tol, verbose)
+        def fake(R, A, M, lam, tol, verbose, *, ties):
+            Q, iterations, achieved = real(R, A, M, lam, tol, verbose, ties=ties)
             Q = Q.copy()
             Q[0] *= 1.001  # row 0 now sums to 1.001
             return Q, iterations, achieved

@@ -243,7 +243,7 @@ def calibrate_kl(
     rank_tol = max(1e-7, 100.0 * tol)
     if ties == "weak":
         try:
-            Q, iterations, _ = _solve_kl(R, A, M, None, tol, verbose)
+            Q, iterations, _ = _solve_kl(R, A, M, None, tol, verbose, ties=ties)
         except CalibrationError as exc:
             if "PrimalInfeasible" in str(exc):
                 raise CalibrationError(
@@ -259,11 +259,7 @@ def calibrate_kl(
             return result
     # Fallback / stable-tie exact-penalty path.
     for lam in (1e3, 1e4, 1e5):
-        Q, iterations, _ = (
-            _solve_kl(R, A, M, lam, tol, verbose)
-            if ties == "weak"
-            else _solve_kl(R, A, M, lam, tol, verbose, ties=ties)
-        )
+        Q, iterations, _ = _solve_kl(R, A, M, lam, tol, verbose, ties=ties)
         result = _kl_result(Q, R, A, M, iterations, ties=ties, feasibility_tol=feas_tol)
         if result.converged and result.max_rank_violation <= rank_tol:
             return result
@@ -560,11 +556,7 @@ def calibrate_kl_soft(
     if ties not in ("weak", "stable"):
         raise CalibrationError(f"ties must be 'weak' or 'stable', got {ties!r}")
     P, M, R, A = _prepare_kl(P, M, R, A, tol)
-    Q, iterations, _ = (
-        _solve_kl(R, A, M, float(lam), tol, verbose)
-        if ties == "weak"
-        else _solve_kl(R, A, M, float(lam), tol, verbose, ties=ties)
-    )
+    Q, iterations, _ = _solve_kl(R, A, M, float(lam), tol, verbose, ties=ties)
     feas_tol = max(_FEASIBILITY_TOL, 100.0 * tol)
     result = _kl_result(Q, R, A, M, iterations, ties=ties, feasibility_tol=feas_tol)
     if not result.converged:
